@@ -10,6 +10,7 @@ import { handleInteractionCreate } from './handlers/interactionCreate.js';
 import { handleAppealsChannelMessage } from './handlers/appealsChannel.js';
 import { startPaymentDeadlineJob } from './jobs/paymentDeadline.js';
 import { startAutoArchiveJob } from './jobs/autoArchive.js';
+import { registerSlashCommands } from './registerCommands.js';
 
 initDatabase();
 
@@ -23,11 +24,17 @@ const client = new Client({
   partials: [Partials.Channel],
 });
 
-client.once('ready', () => {
+client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}`);
   console.log(`Claims channel: ${config.claimsChannelId}`);
   console.log(`Payment deadline: ${config.paymentDeadlineHours}h`);
   console.log(`Archive after shipped: ${config.archiveDaysAfterShipped}d`);
+
+  try {
+    await registerSlashCommands();
+  } catch (err) {
+    console.error('Failed to auto-register slash commands:', err);
+  }
 
   startPaymentDeadlineJob(client);
   startAutoArchiveJob(client);

@@ -26,9 +26,10 @@ cp .env.example .env
 # fill in token, IDs, PayID, role IDs
 
 npm install
-npm run register-commands
 npm start
 ```
+
+Slash commands register **automatically on bot startup** (guild commands, usually visible within seconds). You do not need a separate `npm run register-commands` step.
 
 ### Discord setup checklist
 
