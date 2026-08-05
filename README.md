@@ -1,17 +1,18 @@
 # TCG Pack Bot — Claim Sale Discord Bot
 
-Discord claim-sale bot for **TCG Pack Bot** (Pokémon TCG reselling). Buyers claim stock with a strict message format; each valid claim becomes a private ticket thread with PayID payment details. Payment confirmation is always manual.
+Discord claim-sale bot for **TCG Pack Bot** (Pokémon TCG reselling). Staff posts stock; buyers claim via a dropdown on that post. Each valid claim becomes a private ticket thread with PayID payment details. Payment confirmation is always manual.
 
 ## Flow
 
 1. Staff adds products (`/product add`) and posts stock (`/stockpost`).
-2. Buyer claims: `claim 2x mega dream`
-3. Bot reacts ✅ and opens a **private thread** for buyer + staff.
-4. Buyer fills the intake modal (name, phone, address).
-5. Bot posts PayID, amount, order reference, and payment deadline (default **2 hours**).
-6. Buyer posts a payment screenshot; staff runs `/paid`, later `/shipped`.
-7. Thread **auto-archives 7 days** after shipped.
-8. Missed payment deadline → buyer banned, staff log, thread closed. Unban is **manual only** (`/unban` or appeal review).
+2. Buyer picks a product from the **dropdown**, enters quantity (and shipping on first claim).
+3. Bot opens a **private thread** and posts PayID, amount, order reference, and payment deadline immediately.
+4. Returning buyers with saved shipping details only enter quantity.
+5. Buyer posts a payment screenshot; staff runs `/paid`, later `/shipped`.
+6. Thread **auto-archives 7 days** after shipped.
+7. Missed payment deadline → buyer banned, staff log, thread closed. Unban is **manual only** (`/unban` or appeal review).
+
+Text backup (optional): `claim 2x mega dream` still works in the claims channel.
 
 ## Requirements
 
@@ -45,14 +46,18 @@ Slash commands register **automatically on bot startup** (guild commands, usuall
 | Command | Who | Purpose |
 |---------|-----|---------|
 | `/product add\|stock\|price\|deactivate\|list` | Staff | Manage sale inventory |
-| `/stockpost` | Staff | Post public stock + claim instructions |
+| `/stockpost` | Staff | Post public stock + claim dropdown |
 | `/paid` | Staff | Manual payment confirmation |
 | `/shipped` | Staff | Mark shipped (starts archive timer) |
 | `/ban` / `/unban` | Staff | Manual claim ban control |
 | `/appeal submit\|reject\|history` | Buyer / Staff | Ban appeals |
 | `/order` | Staff | Lookup by reference |
 
-## Claim format (strict)
+## Claiming
+
+**Primary:** use the dropdown on `/stockpost`.
+
+**Backup text format:**
 
 ```
 claim [quantity]x [product]
@@ -60,8 +65,8 @@ claim [quantity]x [product]
 
 Example: `claim 2x mega dream`
 
-Wrong format / sold out / duplicate → brief rejection, no thread.  
-Banned buyers → silent ignore.
+Sold out / duplicate → brief rejection, no thread.  
+Banned buyers → blocked from claiming.
 
 ## Data
 

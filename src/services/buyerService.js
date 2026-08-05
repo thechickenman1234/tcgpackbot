@@ -24,6 +24,16 @@ export function isBuyerBanned(discordId) {
   return Boolean(buyer?.is_banned);
 }
 
+export function hasCompleteShippingDetails(buyerOrId) {
+  const buyer = typeof buyerOrId === 'string' ? getBuyer(buyerOrId) : buyerOrId;
+  if (!buyer) return false;
+  return Boolean(
+    buyer.name?.trim()
+    && buyer.phone?.trim()
+    && buyer.shipping_address?.trim(),
+  );
+}
+
 export function updateBuyerDetails(discordId, { name, phone, shippingAddress }) {
   ensureBuyer(discordId);
   getDb().prepare(`

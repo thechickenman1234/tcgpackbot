@@ -1,6 +1,7 @@
 import { EmbedBuilder } from 'discord.js';
 import { config } from '../config.js';
 import { formatAud, isStaff } from '../utils/permissions.js';
+import { buildClaimSelectRow } from '../handlers/claimUi.js';
 import {
   createProduct,
   findActiveProductByName,
@@ -141,6 +142,14 @@ async function handleStockpost(interaction) {
     return;
   }
 
+  if (interaction.channelId !== config.claimsChannelId) {
+    await interaction.reply({
+      content: `Post stock in the claims channel (<#${config.claimsChannelId}>) so the claim dropdown works.`,
+      ephemeral: true,
+    });
+    return;
+  }
+
   const products = listActiveProducts();
   if (!products.length) {
     await interaction.reply({ content: 'No active products. Add some with `/product add`.', ephemeral: true });
@@ -152,13 +161,12 @@ async function handleStockpost(interaction) {
     .setColor(0xe67e22)
     .setDescription(
       [
-        'Reply in this channel with the exact format:',
-        '```',
-        'claim [quantity]x [product]',
-        '```',
-        'Example: `claim 2x mega dream`',
+        '**How to claim**',
+        '1. Use the dropdown below to pick a product',
+        '2. Enter quantity (and shipping details if it\'s your first claim)',
+        '3. You\'ll get a **private ticket** with PayID payment details',
         '',
-        'Valid claims get a ✅ and a **private ticket thread**.',
+        'Payment deadline applies once your claim is locked — pay and post a screenshot in your ticket.',
       ].join('\n'),
     )
     .addFields(
@@ -174,7 +182,11 @@ async function handleStockpost(interaction) {
     )
     .setFooter({ text: 'Payment via PayID · confirmed manually by staff' });
 
-  await interaction.reply({ embeds: [embed] });
+  const selectRow = buildClaimSelectRow(products);
+  await interaction.reply({
+    embeds: [embed],
+    components: selectRow ? [selectRow] : [],
+  });
 }
 
 async function handlePaid(interaction) {

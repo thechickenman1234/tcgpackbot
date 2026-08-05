@@ -7,9 +7,10 @@ import {
 import { config } from '../config.js';
 import { parseClaim, looksLikeClaimAttempt } from '../utils/claimParser.js';
 import { formatAud, hasBannedRole } from '../utils/permissions.js';
-import { isBuyerBanned } from './buyerService.js';
+import { getBuyer, hasCompleteShippingDetails, isBuyerBanned } from './buyerService.js';
 import { findActiveProductByName } from './productService.js';
 import { attachThread, createClaimOrder } from './orderService.js';
+import { buildPaymentEmbed } from './paymentEmbed.js';
 
 async function briefReply(message, text) {
   try {
@@ -18,6 +19,99 @@ async function briefReply(message, text) {
   } catch {
     // ignore
   }
+}
+
+/**
+ * Create order + private thread. Posts PayID immediately when shipping details exist;
+ * otherwise posts the intake-form fallback button.
+ */
+export async function fulfillClaim({
+  channel,
+  buyerUser,
+  product,
+  quantity,
+  claimMessageId = null,
+  shippingDetails = null,
+}) {
+  const created = createClaimOrder({
+    buyerId: buyerUser.id,
+    product,
+    quantity,
+    claimMessageId,
+  });
+
+  if (!created.ok) {
+    return { ok: false, reason: created.reason, existing: created.existing };
+  }
+
+  const order = created.order;
+  const threadName = `${order.reference_code} · ${buyerUser.username}`.slice(0, 100);
+
+  let thread;
+  try {
+    thread = await channel.threads.create({
+      name: threadName,
+      type: ChannelType.PrivateThread,
+      invitable: false,
+      reason: `Claim ticket ${order.reference_code}`,
+    });
+  } catch (err) {
+    console.error('Failed to create private thread:', err);
+    return { ok: false, reason: 'thread_failed', order };
+  }
+
+  attachThread(order.id, thread.id);
+
+  try {
+    await thread.members.add(buyerUser.id);
+  } catch (err) {
+    console.error('Failed to add buyer to thread:', err);
+  }
+
+  const details = shippingDetails ?? (() => {
+    const buyer = getBuyer(buyerUser.id);
+    if (!hasCompleteShippingDetails(buyer)) return null;
+    return {
+      name: buyer.name,
+      phone: buyer.phone,
+      shippingAddress: buyer.shipping_address,
+    };
+  })();
+
+  try {
+    if (details) {
+      await thread.send({
+        content: [
+          `<@${buyerUser.id}> · <@&${config.staffRoleId}>`,
+          `**Claim locked:** ${order.quantity}x **${order.product_name}** (${formatAud(order.total_cents)})`,
+          `Order: \`${order.reference_code}\``,
+        ].join('\n'),
+        embeds: [buildPaymentEmbed(order, details)],
+      });
+    } else {
+      await thread.send({
+        content: [
+          `<@${buyerUser.id}> · <@&${config.staffRoleId}>`,
+          `**Claim locked:** ${order.quantity}x **${order.product_name}** (${formatAud(order.total_cents)})`,
+          `Order: \`${order.reference_code}\``,
+          '',
+          'Open the intake form below to receive PayID payment details.',
+        ].join('\n'),
+        components: [
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId(`intake:${order.id}`)
+              .setLabel('Open intake form')
+              .setStyle(ButtonStyle.Primary),
+          ),
+        ],
+      });
+    }
+  } catch (err) {
+    console.error('Failed to send thread opener:', err);
+  }
+
+  return { ok: true, order, thread };
 }
 
 export async function handleClaimMessage(message) {
@@ -31,20 +125,19 @@ export async function handleClaimMessage(message) {
   if (!parsed) {
     await briefReply(
       message,
-      'Invalid format. Use: `claim [quantity]x [product]` — e.g. `claim 2x mega dream`',
+      'Invalid format. Prefer the dropdown on the stock post, or use: `claim [quantity]x [product]`',
     );
     return;
   }
 
   const member = message.member;
   if (hasBannedRole(member) || isBuyerBanned(message.author.id)) {
-    // Silent block for banned buyers
     return;
   }
 
   const product = findActiveProductByName(parsed.productName);
   if (!product) {
-    await briefReply(message, `Unknown product: \`${parsed.productName}\`. Check the stock post for exact names.`);
+    await briefReply(message, `Unknown product: \`${parsed.productName}\`. Use the dropdown on the stock post.`);
     return;
   }
 
@@ -58,78 +151,31 @@ export async function handleClaimMessage(message) {
     return;
   }
 
-  const created = createClaimOrder({
-    buyerId: message.author.id,
+  const result = await fulfillClaim({
+    channel: message.channel,
+    buyerUser: message.author,
     product,
     quantity: parsed.quantity,
     claimMessageId: message.id,
   });
 
-  if (!created.ok) {
-    if (created.reason === 'duplicate') {
+  if (!result.ok) {
+    if (result.reason === 'duplicate') {
       await briefReply(
         message,
-        `You already have an open claim for \`${product.name}\` (${created.existing.reference_code}).`,
+        `You already have an open claim for \`${product.name}\` (${result.existing.reference_code}).`,
       );
-    } else if (created.reason === 'sold_out') {
+    } else if (result.reason === 'sold_out') {
       await briefReply(message, `\`${product.name}\` is sold out.`);
+    } else if (result.reason === 'thread_failed') {
+      await briefReply(message, 'Claim accepted in DB but thread creation failed — staff will follow up.');
     }
     return;
   }
 
-  const order = created.order;
-
   try {
     await message.react('✅');
   } catch {
-    // reaction permission missing — continue
-  }
-
-  const threadName = `${order.reference_code} · ${message.author.username}`.slice(0, 100);
-
-  let thread;
-  try {
-    thread = await message.channel.threads.create({
-      name: threadName,
-      type: ChannelType.PrivateThread,
-      invitable: false,
-      reason: `Claim ticket ${order.reference_code}`,
-    });
-  } catch (err) {
-    console.error('Failed to create private thread:', err);
-    await briefReply(message, 'Claim accepted in DB but thread creation failed — staff will follow up.');
-    return;
-  }
-
-  attachThread(order.id, thread.id);
-
-  try {
-    await thread.members.add(message.author.id);
-  } catch (err) {
-    console.error('Failed to add buyer to thread:', err);
-  }
-
-  // Add staff role members is heavy; private threads with staff role access
-  // rely on staff opening via thread list / bot mentioning staff role once.
-  try {
-    await thread.send({
-      content: [
-        `<@${message.author.id}> · <@&${config.staffRoleId}>`,
-        `**Claim locked:** ${order.quantity}x **${order.product_name}** (${formatAud(order.total_cents)})`,
-        `Order: \`${order.reference_code}\``,
-        '',
-        'Open the intake form below to receive PayID payment details.',
-      ].join('\n'),
-      components: [
-        new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId(`intake:${order.id}`)
-            .setLabel('Open intake form')
-            .setStyle(ButtonStyle.Primary),
-        ),
-      ],
-    });
-  } catch (err) {
-    console.error('Failed to send thread intake prompt:', err);
+    // ignore
   }
 }

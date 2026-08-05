@@ -1,10 +1,26 @@
 import { handleSlashCommand } from '../commands/handlers.js';
 import { handleIntakeSubmit, showIntakeModal } from './intakeModal.js';
+import {
+  CLAIM_MODAL_PREFIX,
+  CLAIM_SELECT_ID,
+  handleClaimModalSubmit,
+  handleClaimSelect,
+} from './claimUi.js';
 
 export async function handleInteractionCreate(interaction) {
   try {
     if (interaction.isChatInputCommand()) {
       await handleSlashCommand(interaction);
+      return;
+    }
+
+    if (interaction.isStringSelectMenu() && interaction.customId === CLAIM_SELECT_ID) {
+      await handleClaimSelect(interaction);
+      return;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith(CLAIM_MODAL_PREFIX)) {
+      await handleClaimModalSubmit(interaction);
       return;
     }
 
