@@ -6,8 +6,10 @@ import {
   StringSelectMenuBuilder,
 } from 'discord.js';
 import { config } from '../config.js';
+import { parseCityStateZip } from '../utils/claimParser.js';
 import { formatAud, hasBannedRole } from '../utils/permissions.js';
 import {
+  buyerDetailsFromRow,
   getBuyer,
   hasCompleteShippingDetails,
   isBuyerBanned,
@@ -20,11 +22,19 @@ export const CLAIM_SELECT_ID = 'claim_select';
 export const CLAIM_MODAL_PREFIX = 'claim_modal:';
 
 export function buildClaimSelectRow(products = listActiveProducts()) {
-  const options = products.slice(0, 25).map((p) => ({
-    label: p.name.slice(0, 100),
-    description: `${formatAud(p.price_cents)} · ${p.quantity_available} left`.slice(0, 100),
-    value: String(p.id),
-  }));
+  const options = products
+    .filter((p) => p.quantity_available > 0)
+    .slice(0, 25)
+    .map((p) => {
+      const ship = p.shipping_cents
+        ? ` + ${formatAud(p.shipping_cents)} ship`
+        : '';
+      return {
+        label: p.name.slice(0, 100),
+        description: `${formatAud(p.price_cents)}${ship} · ${p.quantity_available} left`.slice(0, 100),
+        value: String(p.id),
+      };
+    });
 
   if (!options.length) return null;
 
@@ -55,6 +65,7 @@ function buildClaimModal(productId, includeShipping) {
   );
 
   if (includeShipping) {
+    // Discord modals max 5 fields — city/state/zip combined in one input
     modal.addComponents(
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
@@ -75,10 +86,19 @@ function buildClaimModal(productId, includeShipping) {
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
           .setCustomId('address')
-          .setLabel('Shipping address')
-          .setStyle(TextInputStyle.Paragraph)
+          .setLabel('Street address')
+          .setStyle(TextInputStyle.Short)
           .setRequired(true)
-          .setMaxLength(500),
+          .setMaxLength(200),
+      ),
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('city_state_zip')
+          .setLabel('City, State, ZIP')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+          .setMaxLength(120)
+          .setPlaceholder('Melbourne, VIC, 3000'),
       ),
     );
   }
@@ -96,7 +116,6 @@ export async function handleClaimSelect(interaction) {
   }
 
   if (hasBannedRole(interaction.member) || isBuyerBanned(interaction.user.id)) {
-    // Silent-ish block (ephemeral so they know the select didn't hang)
     await interaction.reply({ content: 'You cannot claim right now.', ephemeral: true });
     return;
   }
@@ -150,26 +169,41 @@ export async function handleClaimModalSubmit(interaction) {
     return;
   }
 
-  let shippingDetails = null;
-  const buyer = getBuyer(interaction.user.id);
+  let shippingDetails = buyerDetailsFromRow(getBuyer(interaction.user.id));
 
-  if (hasCompleteShippingDetails(buyer)) {
-    shippingDetails = {
-      name: buyer.name,
-      phone: buyer.phone,
-      shippingAddress: buyer.shipping_address,
-    };
-  } else {
+  if (!shippingDetails) {
     try {
       const name = interaction.fields.getTextInputValue('full_name').trim();
       const phone = interaction.fields.getTextInputValue('phone').trim();
       const address = interaction.fields.getTextInputValue('address').trim();
+      const { city, state, zip } = parseCityStateZip(
+        interaction.fields.getTextInputValue('city_state_zip'),
+      );
+
+      if (!city || !state || !zip) {
+        await interaction.reply({
+          content: 'Please enter City, State, ZIP like: `Melbourne, VIC, 3000`',
+          ephemeral: true,
+        });
+        return;
+      }
+
       updateBuyerDetails(interaction.user.id, {
         name,
         phone,
         shippingAddress: address,
+        city,
+        state,
+        zip,
       });
-      shippingDetails = { name, phone, shippingAddress: address };
+      shippingDetails = {
+        name,
+        phone,
+        shippingAddress: address,
+        city,
+        state,
+        zip,
+      };
     } catch {
       await interaction.reply({
         content: 'Shipping details are required for your first claim. Try again from the dropdown.',

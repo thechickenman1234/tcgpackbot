@@ -7,10 +7,19 @@ import {
 import { config } from '../config.js';
 import { parseClaim, looksLikeClaimAttempt } from '../utils/claimParser.js';
 import { formatAud, hasBannedRole } from '../utils/permissions.js';
-import { getBuyer, hasCompleteShippingDetails, isBuyerBanned } from './buyerService.js';
-import { findActiveProductByName } from './productService.js';
+import {
+  buyerDetailsFromRow,
+  getBuyer,
+  isBuyerBanned,
+} from './buyerService.js';
+import {
+  findActiveProductByName,
+  getProductById,
+  listActiveProducts,
+} from './productService.js';
 import { attachThread, createClaimOrder } from './orderService.js';
 import { buildPaymentEmbed } from './paymentEmbed.js';
+import { handlePostClaimSaleState } from './saleAnnouncements.js';
 
 async function briefReply(message, text) {
   try {
@@ -19,6 +28,19 @@ async function briefReply(message, text) {
   } catch {
     // ignore
   }
+}
+
+export function resolveClaimProduct(productName) {
+  if (productName) {
+    const product = findActiveProductByName(productName);
+    if (!product) return { ok: false, reason: 'unknown', productName };
+    return { ok: true, product };
+  }
+
+  const active = listActiveProducts().filter((p) => p.quantity_available > 0);
+  if (active.length === 1) return { ok: true, product: active[0] };
+  if (active.length === 0) return { ok: false, reason: 'no_sale' };
+  return { ok: false, reason: 'need_product' };
 }
 
 /**
@@ -68,15 +90,7 @@ export async function fulfillClaim({
     console.error('Failed to add buyer to thread:', err);
   }
 
-  const details = shippingDetails ?? (() => {
-    const buyer = getBuyer(buyerUser.id);
-    if (!hasCompleteShippingDetails(buyer)) return null;
-    return {
-      name: buyer.name,
-      phone: buyer.phone,
-      shippingAddress: buyer.shipping_address,
-    };
-  })();
+  const details = shippingDetails ?? buyerDetailsFromRow(getBuyer(buyerUser.id));
 
   try {
     if (details) {
@@ -111,6 +125,8 @@ export async function fulfillClaim({
     console.error('Failed to send thread opener:', err);
   }
 
+  await handlePostClaimSaleState(channel, getProductById(product.id));
+
   return { ok: true, order, thread };
 }
 
@@ -125,7 +141,7 @@ export async function handleClaimMessage(message) {
   if (!parsed) {
     await briefReply(
       message,
-      'Invalid format. Prefer the dropdown on the stock post, or use: `claim [quantity]x [product]`',
+      'Could not read that claim. Use the stockpost dropdown, or e.g. `claim 2x mega dream` / `claim 2`',
     );
     return;
   }
@@ -135,11 +151,19 @@ export async function handleClaimMessage(message) {
     return;
   }
 
-  const product = findActiveProductByName(parsed.productName);
-  if (!product) {
-    await briefReply(message, `Unknown product: \`${parsed.productName}\`. Use the dropdown on the stock post.`);
+  const resolved = resolveClaimProduct(parsed.productName);
+  if (!resolved.ok) {
+    if (resolved.reason === 'unknown') {
+      await briefReply(message, `Unknown product: \`${resolved.productName}\`. Use the dropdown on the stock post.`);
+    } else if (resolved.reason === 'no_sale') {
+      await briefReply(message, 'No active claim sale right now.');
+    } else {
+      await briefReply(message, 'Multiple products are live — include the product name, or use the dropdown.');
+    }
     return;
   }
+
+  const product = resolved.product;
 
   if (product.quantity_available < parsed.quantity) {
     await briefReply(

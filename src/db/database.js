@@ -12,6 +12,13 @@ export function getDb() {
   return db;
 }
 
+function ensureColumn(table, column, definition) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
 export function initDatabase() {
   const dbPath = path.resolve(config.databasePath);
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -26,6 +33,9 @@ export function initDatabase() {
       name TEXT,
       phone TEXT,
       shipping_address TEXT,
+      city TEXT,
+      state TEXT,
+      zip TEXT,
       is_banned INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
@@ -46,6 +56,7 @@ export function initDatabase() {
       name TEXT NOT NULL UNIQUE,
       slug TEXT NOT NULL UNIQUE,
       price_cents INTEGER NOT NULL,
+      shipping_cents INTEGER NOT NULL DEFAULT 0,
       quantity_available INTEGER NOT NULL DEFAULT 0,
       active INTEGER NOT NULL DEFAULT 1,
       sale_window TEXT,
@@ -61,6 +72,7 @@ export function initDatabase() {
       product_name TEXT NOT NULL,
       quantity INTEGER NOT NULL,
       unit_price_cents INTEGER NOT NULL,
+      shipping_cents INTEGER NOT NULL DEFAULT 0,
       total_cents INTEGER NOT NULL,
       status TEXT NOT NULL CHECK (status IN ('pending', 'paid', 'shipped', 'archived', 'cancelled')),
       thread_id TEXT,
@@ -83,6 +95,13 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_orders_archive ON orders(archive_at);
     CREATE INDEX IF NOT EXISTS idx_products_slug ON products(slug);
   `);
+
+  // Migrations for existing DBs created before these columns existed
+  ensureColumn('buyers', 'city', 'TEXT');
+  ensureColumn('buyers', 'state', 'TEXT');
+  ensureColumn('buyers', 'zip', 'TEXT');
+  ensureColumn('products', 'shipping_cents', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('orders', 'shipping_cents', 'INTEGER NOT NULL DEFAULT 0');
 
   return db;
 }

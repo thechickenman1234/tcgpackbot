@@ -9,6 +9,7 @@ import { getOrderById } from '../services/orderService.js';
 import { buildPaymentEmbed } from '../services/paymentEmbed.js';
 
 export function buildIntakeModal(orderId) {
+  // 5 fields max: name, phone, street, city, state+zip
   return new ModalBuilder()
     .setCustomId(`intake_modal:${orderId}`)
     .setTitle('Shipping details')
@@ -32,12 +33,38 @@ export function buildIntakeModal(orderId) {
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
           .setCustomId('address')
-          .setLabel('Shipping address')
-          .setStyle(TextInputStyle.Paragraph)
+          .setLabel('Street address')
+          .setStyle(TextInputStyle.Short)
           .setRequired(true)
-          .setMaxLength(500),
+          .setMaxLength(200),
+      ),
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('city')
+          .setLabel('City / Suburb')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+          .setMaxLength(80),
+      ),
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('state_zip')
+          .setLabel('State and ZIP / postcode')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+          .setMaxLength(40)
+          .setPlaceholder('VIC 3000'),
       ),
     );
+}
+
+function parseStateZip(raw) {
+  const text = raw.trim().replace(/\s+/g, ' ');
+  const match = text.match(/^(.+?)\s+(\d[\w-]*)$/);
+  if (match) return { state: match[1].trim(), zip: match[2] };
+  const parts = text.split(',').map((p) => p.trim()).filter(Boolean);
+  if (parts.length >= 2) return { state: parts[0], zip: parts.slice(1).join(' ') };
+  return { state: text, zip: '' };
 }
 
 export async function showIntakeModal(interaction) {
@@ -84,11 +111,24 @@ export async function handleIntakeSubmit(interaction) {
   const name = interaction.fields.getTextInputValue('full_name').trim();
   const phone = interaction.fields.getTextInputValue('phone').trim();
   const address = interaction.fields.getTextInputValue('address').trim();
+  const city = interaction.fields.getTextInputValue('city').trim();
+  const { state, zip } = parseStateZip(interaction.fields.getTextInputValue('state_zip'));
+
+  if (!state || !zip) {
+    await interaction.reply({
+      content: 'Please enter state and ZIP like: `VIC 3000`',
+      ephemeral: true,
+    });
+    return;
+  }
 
   updateBuyerDetails(interaction.user.id, {
     name,
     phone,
     shippingAddress: address,
+    city,
+    state,
+    zip,
   });
 
   await interaction.reply({
@@ -97,6 +137,9 @@ export async function handleIntakeSubmit(interaction) {
         name,
         phone,
         shippingAddress: address,
+        city,
+        state,
+        zip,
       }),
     ],
   });

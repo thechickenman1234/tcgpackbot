@@ -2,8 +2,32 @@ import { EmbedBuilder } from 'discord.js';
 import { config } from '../config.js';
 import { formatAud } from '../utils/permissions.js';
 
-export function buildPaymentEmbed(order, { name, phone, shippingAddress }) {
+export function formatShipTo({ name, phone, shippingAddress, city, state, zip }) {
+  return [
+    name,
+    phone,
+    shippingAddress,
+    [city, state, zip].filter(Boolean).join(', '),
+  ].filter(Boolean).join('\n');
+}
+
+export function buildPaymentEmbed(order, shipping) {
   const deadlineUnix = Math.floor(new Date(order.payment_deadline_at).getTime() / 1000);
+  const shippingCents = order.shipping_cents || 0;
+  const itemsSubtotal = order.unit_price_cents * order.quantity;
+
+  const amountFields = [
+    { name: 'Items', value: `${order.quantity}x ${order.product_name} (${formatAud(itemsSubtotal)})`, inline: false },
+  ];
+
+  if (shippingCents > 0) {
+    amountFields.push({ name: 'Shipping', value: formatAud(shippingCents), inline: true });
+  }
+
+  amountFields.push(
+    { name: 'Amount owed', value: `**${formatAud(order.total_cents)}**`, inline: true },
+    { name: 'Order reference', value: `\`${order.reference_code}\``, inline: true },
+  );
 
   return new EmbedBuilder()
     .setTitle('Payment details')
@@ -18,15 +42,13 @@ export function buildPaymentEmbed(order, { name, phone, shippingAddress }) {
     )
     .addFields(
       { name: 'PayID', value: `\`${config.payId}\``, inline: false },
-      { name: 'Amount owed', value: `**${formatAud(order.total_cents)}**`, inline: true },
-      { name: 'Order reference', value: `\`${order.reference_code}\``, inline: true },
-      { name: 'Items', value: `${order.quantity}x ${order.product_name}`, inline: false },
+      ...amountFields,
       {
         name: 'Payment deadline',
         value: `<t:${deadlineUnix}:F> (<t:${deadlineUnix}:R>)`,
         inline: false,
       },
-      { name: 'Ship to', value: `${name}\n${phone}\n${shippingAddress}`, inline: false },
+      { name: 'Ship to', value: formatShipTo(shipping), inline: false },
     )
     .setFooter({ text: 'Missing the deadline without payment results in a claim ban.' });
 }

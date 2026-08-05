@@ -10,8 +10,9 @@ export const commandDefinitions = [
         .setName('add')
         .setDescription('Add a product to the active sale')
         .addStringOption((o) => o.setName('name').setDescription('Product name buyers must claim').setRequired(true))
-        .addNumberOption((o) => o.setName('price').setDescription('Price in AUD e.g. 12.50').setRequired(true))
+        .addNumberOption((o) => o.setName('price').setDescription('Price in AUD e.g. 150').setRequired(true))
         .addIntegerOption((o) => o.setName('quantity').setDescription('Units available').setRequired(true).setMinValue(0))
+        .addNumberOption((o) => o.setName('shipping').setDescription('Flat shipping in AUD e.g. 15').setRequired(false))
         .addStringOption((o) => o.setName('sale_window').setDescription('Optional sale window text').setRequired(false)),
     )
     .addSubcommand((sub) =>
@@ -30,6 +31,13 @@ export const commandDefinitions = [
     )
     .addSubcommand((sub) =>
       sub
+        .setName('shipping')
+        .setDescription('Update flat shipping cost for a product')
+        .addStringOption((o) => o.setName('name').setDescription('Product name').setRequired(true))
+        .addNumberOption((o) => o.setName('shipping').setDescription('Shipping in AUD e.g. 15').setRequired(true).setMinValue(0)),
+    )
+    .addSubcommand((sub) =>
+      sub
         .setName('deactivate')
         .setDescription('Remove a product from the active sale')
         .addStringOption((o) => o.setName('name').setDescription('Product name').setRequired(true)),
@@ -41,6 +49,11 @@ export const commandDefinitions = [
   new SlashCommandBuilder()
     .setName('stockpost')
     .setDescription('Post current stock listing in this channel')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+
+  new SlashCommandBuilder()
+    .setName('endsale')
+    .setDescription('End the claim sale and post the sale-over message')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
   new SlashCommandBuilder()

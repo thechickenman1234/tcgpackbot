@@ -40,14 +40,15 @@ export function createClaimOrder({ buyerId, product, quantity, claimMessageId })
 
   const claimedAt = new Date();
   const referenceCode = generateOrderReference();
-  const totalCents = product.price_cents * quantity;
+  const shippingCents = product.shipping_cents || 0;
+  const totalCents = product.price_cents * quantity + shippingCents;
 
   const result = getDb().prepare(`
     INSERT INTO orders (
       reference_code, buyer_id, product_id, product_name, quantity,
-      unit_price_cents, total_cents, status, claim_message_id,
+      unit_price_cents, shipping_cents, total_cents, status, claim_message_id,
       claimed_at, payment_deadline_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
   `).run(
     referenceCode,
     buyerId,
@@ -55,6 +56,7 @@ export function createClaimOrder({ buyerId, product, quantity, claimMessageId })
     product.name,
     quantity,
     product.price_cents,
+    shippingCents,
     totalCents,
     claimMessageId,
     claimedAt.toISOString(),

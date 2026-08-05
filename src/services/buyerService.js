@@ -30,17 +30,39 @@ export function hasCompleteShippingDetails(buyerOrId) {
   return Boolean(
     buyer.name?.trim()
     && buyer.phone?.trim()
-    && buyer.shipping_address?.trim(),
+    && buyer.shipping_address?.trim()
+    && buyer.city?.trim()
+    && buyer.state?.trim()
+    && buyer.zip?.trim(),
   );
 }
 
-export function updateBuyerDetails(discordId, { name, phone, shippingAddress }) {
+export function buyerDetailsFromRow(buyer) {
+  if (!buyer || !hasCompleteShippingDetails(buyer)) return null;
+  return {
+    name: buyer.name,
+    phone: buyer.phone,
+    shippingAddress: buyer.shipping_address,
+    city: buyer.city,
+    state: buyer.state,
+    zip: buyer.zip,
+  };
+}
+
+export function updateBuyerDetails(discordId, {
+  name,
+  phone,
+  shippingAddress,
+  city,
+  state,
+  zip,
+}) {
   ensureBuyer(discordId);
   getDb().prepare(`
     UPDATE buyers
-    SET name = ?, phone = ?, shipping_address = ?, updated_at = ?
+    SET name = ?, phone = ?, shipping_address = ?, city = ?, state = ?, zip = ?, updated_at = ?
     WHERE discord_id = ?
-  `).run(name, phone, shippingAddress, nowIso(), discordId);
+  `).run(name, phone, shippingAddress, city, state, zip, nowIso(), discordId);
 }
 
 export function setBanned(discordId, banned, reason, staffId = null) {

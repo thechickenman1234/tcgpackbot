@@ -1,15 +1,22 @@
 import { getDb } from '../db/database.js';
 import { nowIso, slugify } from '../utils/permissions.js';
 
-export function createProduct({ name, priceCents, quantity, saleWindow = null }) {
+export function createProduct({
+  name,
+  priceCents,
+  quantity,
+  shippingCents = 0,
+  saleWindow = null,
+}) {
   const db = getDb();
   const ts = nowIso();
   const slug = slugify(name);
 
   const result = db.prepare(`
-    INSERT INTO products (name, slug, price_cents, quantity_available, active, sale_window, created_at, updated_at)
-    VALUES (?, ?, ?, ?, 1, ?, ?, ?)
-  `).run(name, slug, priceCents, quantity, saleWindow, ts, ts);
+    INSERT INTO products (
+      name, slug, price_cents, shipping_cents, quantity_available, active, sale_window, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)
+  `).run(name, slug, priceCents, shippingCents, quantity, saleWindow, ts, ts);
 
   return getProductById(result.lastInsertRowid);
 }
@@ -30,6 +37,12 @@ export function setProductPrice(productId, priceCents) {
   getDb().prepare(`
     UPDATE products SET price_cents = ?, updated_at = ? WHERE id = ?
   `).run(priceCents, nowIso(), productId);
+}
+
+export function setProductShipping(productId, shippingCents) {
+  getDb().prepare(`
+    UPDATE products SET shipping_cents = ?, updated_at = ? WHERE id = ?
+  `).run(shippingCents, nowIso(), productId);
 }
 
 export function getProductById(id) {

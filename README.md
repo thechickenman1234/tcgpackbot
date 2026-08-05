@@ -1,18 +1,18 @@
 # TCG Pack Bot — Claim Sale Discord Bot
 
-Discord claim-sale bot for **TCG Pack Bot** (Pokémon TCG reselling). Staff posts stock; buyers claim via a dropdown on that post. Each valid claim becomes a private ticket thread with PayID payment details. Payment confirmation is always manual.
+Discord claim-sale bot for **TCG Pack Bot** (Pokémon TCG reselling). Staff posts stock; buyers claim via a dropdown (or flexible text). Each valid claim becomes a private ticket with PayID details. Payment confirmation is always manual.
+
+**Staff how-to:** see [USAGE.md](./USAGE.md) for the full English operating guide.
 
 ## Flow
 
-1. Staff adds products (`/product add`) and posts stock (`/stockpost`).
-2. Buyer picks a product from the **dropdown**, enters quantity (and shipping on first claim).
-3. Bot opens a **private thread** and posts PayID, amount, order reference, and payment deadline immediately.
-4. Returning buyers with saved shipping details only enter quantity.
+1. Staff adds a product (`/product add`) with price, quantity, and optional **shipping**, then `/stockpost`.
+2. Buyer picks a product from the **dropdown**, enters quantity (and shipping details on first claim: street, city, state, ZIP).
+3. Bot opens a **private thread** and posts PayID, item total, shipping, order reference, and deadline immediately.
+4. When a product hits 0, the bot posts a **SOLD OUT** message. When nothing remains (or staff runs `/endsale`), it posts **CLAIM SALE IS NOW OVER**.
 5. Buyer posts a payment screenshot; staff runs `/paid`, later `/shipped`.
 6. Thread **auto-archives 7 days** after shipped.
-7. Missed payment deadline → buyer banned, staff log, thread closed. Unban is **manual only** (`/unban` or appeal review).
-
-Text backup (optional): `claim 2x mega dream` still works in the claims channel.
+7. Missed payment deadline → buyer banned. Unban is **manual only**.
 
 ## Requirements
 
@@ -30,7 +30,9 @@ npm install
 npm start
 ```
 
-Slash commands register **automatically on bot startup** (guild commands, usually visible within seconds). You do not need a separate `npm run register-commands` step.
+Slash commands register **automatically on bot startup**.
+
+Default payment deadline is **24 hours** (`PAYMENT_DEADLINE_HOURS`).
 
 ### Discord setup checklist
 
@@ -45,32 +47,37 @@ Slash commands register **automatically on bot startup** (guild commands, usuall
 
 | Command | Who | Purpose |
 |---------|-----|---------|
-| `/product add\|stock\|price\|deactivate\|list` | Staff | Manage sale inventory |
+| `/product add\|stock\|price\|shipping\|deactivate\|list` | Staff | Manage sale inventory |
 | `/stockpost` | Staff | Post public stock + claim dropdown |
+| `/endsale` | Staff | End sale + post sale-over message |
 | `/paid` | Staff | Manual payment confirmation |
 | `/shipped` | Staff | Mark shipped (starts archive timer) |
 | `/ban` / `/unban` | Staff | Manual claim ban control |
 | `/appeal submit\|reject\|history` | Buyer / Staff | Ban appeals |
 | `/order` | Staff | Lookup by reference |
 
+Example product:
+
+```
+/product add name:mega dream price:150 quantity:10 shipping:15
+```
+
 ## Claiming
 
-**Primary:** use the dropdown on `/stockpost`.
+**Primary:** dropdown on `/stockpost`.
 
-**Backup text format:**
+**Text variants also work** (if only one product is live, the name can be omitted):
 
-```
-claim [quantity]x [product]
-```
-
-Example: `claim 2x mega dream`
-
-Sold out / duplicate → brief rejection, no thread.  
-Banned buyers → blocked from claiming.
+- `claim 2x mega dream`
+- `claim 2 mega dream`
+- `claim x2 mega dream`
+- `claim 2x` / `claim 2` / `claim x2`
+- `2x claim mega dream` / `2x claim`
+- `2x mega dream`
 
 ## Data
 
-SQLite (`./data/bot.sqlite` by default) stores buyers, ban history, products, and orders (`pending` → `paid` → `shipped` → `archived`, or `cancelled` on no-show).
+SQLite stores buyers (including city/state/zip), ban history, products (price + flat shipping), and orders.
 
 ## Out of scope (v1)
 

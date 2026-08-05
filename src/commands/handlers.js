@@ -9,8 +9,10 @@ import {
   listAllProducts,
   setProductActive,
   setProductPrice,
+  setProductShipping,
   updateProductStock,
 } from '../services/productService.js';
+import { endClaimSale } from '../services/saleAnnouncements.js';
 import {
   getOrderByReference,
   getOrderByThreadId,
@@ -60,10 +62,15 @@ async function handleProduct(interaction) {
     const name = interaction.options.getString('name', true).trim();
     const price = interaction.options.getNumber('price', true);
     const quantity = interaction.options.getInteger('quantity', true);
+    const shipping = interaction.options.getNumber('shipping') ?? 0;
     const saleWindow = interaction.options.getString('sale_window');
 
     if (price <= 0) {
       await interaction.reply({ content: 'Price must be > 0.', ephemeral: true });
+      return;
+    }
+    if (shipping < 0) {
+      await interaction.reply({ content: 'Shipping cannot be negative.', ephemeral: true });
       return;
     }
 
@@ -71,11 +78,15 @@ async function handleProduct(interaction) {
       const product = createProduct({
         name,
         priceCents: dollarsToCents(price),
+        shippingCents: dollarsToCents(shipping),
         quantity,
         saleWindow,
       });
+      const shipNote = product.shipping_cents
+        ? ` + ${formatAud(product.shipping_cents)} shipping`
+        : '';
       await interaction.reply({
-        content: `Added **${product.name}** — ${formatAud(product.price_cents)} × ${product.quantity_available} available.`,
+        content: `Added **${product.name}** — ${formatAud(product.price_cents)}${shipNote} × ${product.quantity_available} available.`,
         ephemeral: true,
       });
     } catch (err) {
@@ -110,6 +121,22 @@ async function handleProduct(interaction) {
     return;
   }
 
+  if (sub === 'shipping') {
+    const name = interaction.options.getString('name', true);
+    const shipping = interaction.options.getNumber('shipping', true);
+    const product = findActiveProductByName(name) ?? listAllProducts().find((p) => p.name.toLowerCase() === name.toLowerCase());
+    if (!product) {
+      await interaction.reply({ content: 'Product not found.', ephemeral: true });
+      return;
+    }
+    setProductShipping(product.id, dollarsToCents(shipping));
+    await interaction.reply({
+      content: `Shipping for **${product.name}** set to **${formatAud(dollarsToCents(shipping))}** (flat per order).`,
+      ephemeral: true,
+    });
+    return;
+  }
+
   if (sub === 'deactivate') {
     const name = interaction.options.getString('name', true);
     const product = findActiveProductByName(name);
@@ -130,7 +157,8 @@ async function handleProduct(interaction) {
     }
     const lines = products.map((p) => {
       const flag = p.active ? '🟢' : '⚫';
-      return `${flag} **${p.name}** — ${formatAud(p.price_cents)} · qty ${p.quantity_available}${p.sale_window ? ` · ${p.sale_window}` : ''}`;
+      const ship = p.shipping_cents ? ` + ${formatAud(p.shipping_cents)} ship` : '';
+      return `${flag} **${p.name}** — ${formatAud(p.price_cents)}${ship} · qty ${p.quantity_available}${p.sale_window ? ` · ${p.sale_window}` : ''}`;
     });
     await interaction.reply({ content: lines.join('\n').slice(0, 1900), ephemeral: true });
   }
@@ -174,19 +202,47 @@ async function handleStockpost(interaction) {
         name: p.name,
         value: [
           `Price: **${formatAud(p.price_cents)}**`,
+          p.shipping_cents ? `Shipping: **${formatAud(p.shipping_cents)}** (flat)` : 'Shipping: included / none',
           `Available: **${p.quantity_available}**`,
           p.sale_window ? `Window: ${p.sale_window}` : null,
         ].filter(Boolean).join('\n'),
         inline: true,
       })),
     )
-    .setFooter({ text: 'Payment via PayID · confirmed manually by staff' });
+    .setFooter({
+      text: `Payment via PayID · ${config.paymentDeadlineHours}h deadline · confirmed manually by staff`,
+    });
 
   const selectRow = buildClaimSelectRow(products);
   await interaction.reply({
     embeds: [embed],
     components: selectRow ? [selectRow] : [],
   });
+}
+
+async function handleEndSale(interaction) {
+  if (!isStaff(interaction.member)) {
+    await interaction.reply({ content: 'Staff only.', ephemeral: true });
+    return;
+  }
+
+  if (interaction.channelId !== config.claimsChannelId) {
+    await interaction.reply({
+      content: `Run \`/endsale\` in the claims channel (<#${config.claimsChannelId}>).`,
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const active = listActiveProducts();
+  if (!active.length) {
+    await interaction.reply({ content: 'No active claim sale to end.', ephemeral: true });
+    return;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+  const names = await endClaimSale(interaction.channel, { announce: true });
+  await interaction.editReply(`Ended claim sale for: ${names.map((n) => `**${n}**`).join(', ')}`);
 }
 
 async function handlePaid(interaction) {
@@ -371,6 +427,8 @@ export async function handleSlashCommand(interaction) {
       return handleProduct(interaction);
     case 'stockpost':
       return handleStockpost(interaction);
+    case 'endsale':
+      return handleEndSale(interaction);
     case 'paid':
       return handlePaid(interaction);
     case 'shipped':
