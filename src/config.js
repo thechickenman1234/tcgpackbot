@@ -23,6 +23,7 @@ export const config = {
   bannedRoleId: optional('BANNED_ROLE_ID'),
   payId: required('PAYID'),
   paymentDeadlineHours: Number(optional('PAYMENT_DEADLINE_HOURS', '24')),
+  paymentReminderHoursBefore: Number(optional('PAYMENT_REMINDER_HOURS_BEFORE', '1')),
   archiveDaysAfterShipped: Number(optional('ARCHIVE_DAYS_AFTER_SHIPPED', '7')),
   databasePath: optional('DATABASE_PATH', './data/bot.sqlite'),
 };

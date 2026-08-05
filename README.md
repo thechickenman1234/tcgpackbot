@@ -6,13 +6,15 @@ Discord claim-sale bot for **TCG Pack Bot** (Pokémon TCG reselling). Staff post
 
 ## Flow
 
-1. Staff adds a product (`/product add`) with price, quantity, and optional **shipping**, then `/stockpost`.
+1. Staff adds a product (`/product add`) with price, quantity, optional **shipping**, and optional per-person **limit**, then `/stockpost`.
 2. Buyer picks a product from the **dropdown**, enters quantity (and shipping details on first claim: street, city, state, ZIP).
 3. Bot opens a **private thread** and posts PayID, item total, shipping, order reference, and deadline immediately.
-4. When a product hits 0, the bot posts a **SOLD OUT** message. When nothing remains (or staff runs `/endsale`), it posts **CLAIM SALE IS NOW OVER**.
-5. Buyer posts a payment screenshot; staff runs `/paid`, later `/shipped`.
-6. Thread **auto-archives 7 days** after shipped.
-7. Missed payment deadline → buyer banned. Unban is **manual only**.
+4. Extra claims on the same product **top up** a pending ticket until the per-person limit (no second thread).
+5. The stock post **auto-updates** after claims / cancels / stock changes.
+6. When a product hits 0, the bot posts a **SOLD OUT** message. When nothing remains (or staff runs `/endsale`), it posts **CLAIM SALE IS NOW OVER**.
+7. Buyer posts a payment screenshot; staff runs `/paid`, later `/shipped`. Staff can `/cancel` pending tickets (stock returns).
+8. Thread **auto-archives 7 days** after shipped.
+9. ~1 hour before deadline → reminder ping. Missed payment deadline → buyer banned. Unban is **manual only**.
 
 ## Requirements
 
@@ -32,7 +34,8 @@ npm start
 
 Slash commands register **automatically on bot startup**.
 
-Default payment deadline is **24 hours** (`PAYMENT_DEADLINE_HOURS`).
+Default payment deadline is **24 hours** (`PAYMENT_DEADLINE_HOURS`).  
+Default reminder is **1 hour** before deadline (`PAYMENT_REMINDER_HOURS_BEFORE`).
 
 ### Discord setup checklist
 
@@ -47,11 +50,13 @@ Default payment deadline is **24 hours** (`PAYMENT_DEADLINE_HOURS`).
 
 | Command | Who | Purpose |
 |---------|-----|---------|
-| `/product add\|stock\|price\|shipping\|deactivate\|list` | Staff | Manage sale inventory |
-| `/stockpost` | Staff | Post public stock + claim dropdown |
+| `/product add\|stock\|price\|shipping\|limit\|activate\|deactivate\|list` | Staff | Manage sale inventory |
+| `/stockpost` | Staff | Post public stock + claim dropdown (auto-refreshes afterward) |
 | `/endsale` | Staff | End sale + post sale-over message |
 | `/paid` | Staff | Manual payment confirmation |
 | `/shipped` | Staff | Mark shipped (starts archive timer) |
+| `/cancel` | Staff | Cancel pending claim + return stock |
+| `/shipping` | Buyer / Staff | Update saved shipping details |
 | `/ban` / `/unban` | Staff | Manual claim ban control |
 | `/appeal submit\|reject\|history` | Buyer / Staff | Ban appeals |
 | `/order` | Staff | Lookup by reference |
@@ -59,7 +64,7 @@ Default payment deadline is **24 hours** (`PAYMENT_DEADLINE_HOURS`).
 Example product:
 
 ```
-/product add name:mega dream price:150 quantity:10 shipping:15
+/product add name:mega dream price:150 quantity:10 shipping:15 limit:2
 ```
 
 ## Claiming
@@ -77,7 +82,7 @@ Example product:
 
 ## Data
 
-SQLite stores buyers (including city/state/zip), ban history, products (price + flat shipping), and orders.
+SQLite stores buyers (including city/state/zip), ban history, products (price + flat shipping + optional per-buyer limit), orders, and the latest stockpost pointer.
 
 ## Out of scope (v1)
 

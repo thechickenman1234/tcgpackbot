@@ -1,5 +1,6 @@
 import { config } from '../config.js';
 import { listActiveProducts, setProductActive } from './productService.js';
+import { clearStockpostPointer, refreshStockpost } from './stockpostService.js';
 
 export function buildSaleOverMessage(productNames = []) {
   const hours = config.paymentDeadlineHours;
@@ -36,6 +37,15 @@ export async function endClaimSale(channel, { announce = true, productNames = nu
     await channel.send(buildSaleOverMessage(names));
   }
 
+  if (channel?.client) {
+    try {
+      await refreshStockpost(channel.client);
+    } catch {
+      // ignore
+    }
+  }
+  clearStockpostPointer();
+
   return names;
 }
 
@@ -56,7 +66,14 @@ export async function handlePostClaimSaleState(channel, product) {
   }
 
   const remainingWithStock = listActiveProducts().filter((p) => p.quantity_available > 0);
-  if (remainingWithStock.length > 0) return;
+  if (remainingWithStock.length > 0) {
+    try {
+      await refreshStockpost(channel.client);
+    } catch (err) {
+      console.error('Stockpost refresh after claim failed:', err);
+    }
+    return;
+  }
 
   const leftoverNames = listActiveProducts().map((p) => p.name);
   const names = leftoverNames.length ? leftoverNames : [product.name];

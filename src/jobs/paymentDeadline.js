@@ -1,7 +1,13 @@
 import { config } from '../config.js';
 import { setBanned } from '../services/buyerService.js';
-import { cancelOrder, getExpiredUnpaidOrders } from '../services/orderService.js';
+import {
+  cancelOrder,
+  getExpiredUnpaidOrders,
+  getOrdersNeedingPaymentReminder,
+  markReminderSent,
+} from '../services/orderService.js';
 import { logNoShow } from '../services/staffLog.js';
+import { refreshStockpost } from '../services/stockpostService.js';
 
 async function applyBannedRole(client, guildId, userId) {
   if (!config.bannedRoleId) return;
@@ -30,14 +36,51 @@ async function closeThread(client, order) {
   }
 }
 
+export async function processPaymentReminders(client) {
+  const due = getOrdersNeedingPaymentReminder();
+  if (!due.length) return;
+
+  for (const order of due) {
+    try {
+      if (!order.thread_id) {
+        markReminderSent(order.id);
+        continue;
+      }
+
+      const thread = await client.channels.fetch(order.thread_id);
+      if (!thread?.isThread()) {
+        markReminderSent(order.id);
+        continue;
+      }
+
+      const deadlineUnix = Math.floor(new Date(order.payment_deadline_at).getTime() / 1000);
+      await thread.send({
+        content: [
+          `⚠️ <@${order.buyer_id}> payment reminder for \`${order.reference_code}\``,
+          `Deadline is <t:${deadlineUnix}:R> (<t:${deadlineUnix}:F>).`,
+          'Pay via PayID (include the order reference) and post a screenshot here, or you will be banned from future claim sales.',
+        ].join('\n'),
+      });
+
+      markReminderSent(order.id);
+      console.log(`Payment reminder sent: ${order.reference_code}`);
+    } catch (err) {
+      console.error(`Error sending reminder for ${order.reference_code}:`, err);
+    }
+  }
+}
+
 export async function processExpiredPayments(client) {
   const expired = getExpiredUnpaidOrders();
   if (!expired.length) return;
+
+  let releasedAny = false;
 
   for (const order of expired) {
     try {
       const cancelled = cancelOrder(order.id, 'payment_deadline_expired');
       if (!cancelled.ok) continue;
+      releasedAny = true;
 
       setBanned(
         order.buyer_id,
@@ -64,10 +107,17 @@ export async function processExpiredPayments(client) {
       console.error(`Error processing expired order ${order.reference_code}:`, err);
     }
   }
+
+  if (releasedAny) {
+    await refreshStockpost(client);
+  }
 }
 
 export function startPaymentDeadlineJob(client, intervalMs = 60_000) {
   const tick = () => {
+    processPaymentReminders(client).catch((err) => {
+      console.error('paymentReminder job failed:', err);
+    });
     processExpiredPayments(client).catch((err) => {
       console.error('paymentDeadline job failed:', err);
     });

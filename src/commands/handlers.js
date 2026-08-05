@@ -1,10 +1,10 @@
 import { EmbedBuilder } from 'discord.js';
 import { config } from '../config.js';
 import { formatAud, isStaff } from '../utils/permissions.js';
-import { buildClaimSelectRow } from '../handlers/claimUi.js';
 import {
   createProduct,
   findActiveProductByName,
+  findProductByName,
   getProductMaxPerBuyer,
   listActiveProducts,
   listAllProducts,
@@ -16,6 +16,7 @@ import {
 } from '../services/productService.js';
 import { endClaimSale } from '../services/saleAnnouncements.js';
 import {
+  cancelOrder,
   getOrderByReference,
   getOrderByThreadId,
   markPaid,
@@ -29,9 +30,19 @@ import {
   setBanned,
 } from '../services/buyerService.js';
 import { logAppeal, logBan, logUnban } from '../services/staffLog.js';
+import {
+  buildStockpostPayload,
+  rememberStockpost,
+  refreshStockpost,
+} from '../services/stockpostService.js';
+import { handleShippingCommand } from '../handlers/shippingUi.js';
 
 function dollarsToCents(price) {
   return Math.round(Number(price) * 100);
+}
+
+function resolveProductByName(name) {
+  return findActiveProductByName(name) ?? findProductByName(name);
 }
 
 async function applyBannedRole(guild, userId, add) {
@@ -96,6 +107,7 @@ async function handleProduct(interaction) {
         content: `Added **${product.name}** — ${formatAud(product.price_cents)}${shipNote} × ${product.quantity_available} available${limitNote}.`,
         ephemeral: true,
       });
+      await refreshStockpost(interaction.client);
     } catch (err) {
       await interaction.reply({ content: `Could not add product (name may already exist): ${err.message}`, ephemeral: true });
     }
@@ -105,33 +117,39 @@ async function handleProduct(interaction) {
   if (sub === 'stock') {
     const name = interaction.options.getString('name', true);
     const quantity = interaction.options.getInteger('quantity', true);
-    const product = findActiveProductByName(name) ?? listAllProducts().find((p) => p.name.toLowerCase() === name.toLowerCase());
+    const product = resolveProductByName(name);
     if (!product) {
       await interaction.reply({ content: 'Product not found.', ephemeral: true });
       return;
     }
-    updateProductStock(product.id, quantity);
-    await interaction.reply({ content: `Stock for **${product.name}** set to **${quantity}**.`, ephemeral: true });
+    const updated = updateProductStock(product.id, quantity);
+    const reactivated = quantity > 0 ? ' (reactivated)' : '';
+    await interaction.reply({
+      content: `Stock for **${updated.name}** set to **${quantity}**${reactivated}.`,
+      ephemeral: true,
+    });
+    await refreshStockpost(interaction.client);
     return;
   }
 
   if (sub === 'price') {
     const name = interaction.options.getString('name', true);
     const price = interaction.options.getNumber('price', true);
-    const product = findActiveProductByName(name) ?? listAllProducts().find((p) => p.name.toLowerCase() === name.toLowerCase());
+    const product = resolveProductByName(name);
     if (!product) {
       await interaction.reply({ content: 'Product not found.', ephemeral: true });
       return;
     }
     setProductPrice(product.id, dollarsToCents(price));
     await interaction.reply({ content: `Price for **${product.name}** set to **${formatAud(dollarsToCents(price))}**.`, ephemeral: true });
+    await refreshStockpost(interaction.client);
     return;
   }
 
   if (sub === 'shipping') {
     const name = interaction.options.getString('name', true);
     const shipping = interaction.options.getNumber('shipping', true);
-    const product = findActiveProductByName(name) ?? listAllProducts().find((p) => p.name.toLowerCase() === name.toLowerCase());
+    const product = resolveProductByName(name);
     if (!product) {
       await interaction.reply({ content: 'Product not found.', ephemeral: true });
       return;
@@ -141,13 +159,14 @@ async function handleProduct(interaction) {
       content: `Shipping for **${product.name}** set to **${formatAud(dollarsToCents(shipping))}** (flat per order).`,
       ephemeral: true,
     });
+    await refreshStockpost(interaction.client);
     return;
   }
 
   if (sub === 'limit') {
     const name = interaction.options.getString('name', true);
     const max = interaction.options.getInteger('max', true);
-    const product = findActiveProductByName(name) ?? listAllProducts().find((p) => p.name.toLowerCase() === name.toLowerCase());
+    const product = resolveProductByName(name);
     if (!product) {
       await interaction.reply({ content: 'Product not found.', ephemeral: true });
       return;
@@ -160,6 +179,27 @@ async function handleProduct(interaction) {
         : `Per-person limit for **${product.name}** cleared (unlimited).`,
       ephemeral: true,
     });
+    await refreshStockpost(interaction.client);
+    return;
+  }
+
+  if (sub === 'activate') {
+    const name = interaction.options.getString('name', true);
+    const product = resolveProductByName(name);
+    if (!product) {
+      await interaction.reply({ content: 'Product not found.', ephemeral: true });
+      return;
+    }
+    if (product.quantity_available <= 0) {
+      await interaction.reply({
+        content: `**${product.name}** has 0 stock. Use \`/product stock\` first, then activate.`,
+        ephemeral: true,
+      });
+      return;
+    }
+    setProductActive(product.id, true);
+    await interaction.reply({ content: `Activated **${product.name}** (${product.quantity_available} available).`, ephemeral: true });
+    await refreshStockpost(interaction.client);
     return;
   }
 
@@ -172,6 +212,7 @@ async function handleProduct(interaction) {
     }
     setProductActive(product.id, false);
     await interaction.reply({ content: `Deactivated **${product.name}**.`, ephemeral: true });
+    await refreshStockpost(interaction.client);
     return;
   }
 
@@ -212,44 +253,12 @@ async function handleStockpost(interaction) {
     return;
   }
 
-  const embed = new EmbedBuilder()
-    .setTitle('TCG Pack Bot — Claim Sale')
-    .setColor(0xe67e22)
-    .setDescription(
-      [
-        '**How to claim**',
-        '1. Use the dropdown below to pick a product',
-        '2. Enter quantity (and shipping details if it\'s your first claim)',
-        '3. You\'ll get a **private ticket** with PayID payment details',
-        '',
-        'Payment deadline applies once your claim is locked — pay and post a screenshot in your ticket.',
-      ].join('\n'),
-    )
-    .addFields(
-      products.map((p) => {
-        const limit = getProductMaxPerBuyer(p);
-        return {
-          name: p.name,
-          value: [
-            `Price: **${formatAud(p.price_cents)}**`,
-            p.shipping_cents ? `Shipping: **${formatAud(p.shipping_cents)}** (flat)` : 'Shipping: included / none',
-            `Available: **${p.quantity_available}**`,
-            limit ? `Limit: **${limit}** per person` : null,
-            p.sale_window ? `Window: ${p.sale_window}` : null,
-          ].filter(Boolean).join('\n'),
-          inline: true,
-        };
-      }),
-    )
-    .setFooter({
-      text: `Payment via PayID · ${config.paymentDeadlineHours}h deadline · confirmed manually by staff`,
-    });
-
-  const selectRow = buildClaimSelectRow(products);
-  await interaction.reply({
-    embeds: [embed],
-    components: selectRow ? [selectRow] : [],
+  const payload = buildStockpostPayload(products);
+  const message = await interaction.reply({
+    ...payload,
+    fetchReply: true,
   });
+  rememberStockpost(interaction.channelId, message.id);
 }
 
 async function handleEndSale(interaction) {
@@ -324,6 +333,58 @@ async function handleShipped(interaction) {
   const archiveUnix = Math.floor(new Date(result.order.archive_at).getTime() / 1000);
   await interaction.reply({
     content: `📦 Marked **${order.reference_code}** as **shipped**. Thread will auto-archive <t:${archiveUnix}:R>.`,
+  });
+}
+
+async function handleCancel(interaction) {
+  if (!isStaff(interaction.member)) {
+    await interaction.reply({ content: 'Staff only.', ephemeral: true });
+    return;
+  }
+
+  const order = resolveOrderFromInteraction(interaction);
+  if (!order) {
+    await interaction.reply({
+      content: 'Order not found. Run `/cancel` inside the ticket thread or pass `reference`.',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  if (order.status !== 'pending') {
+    await interaction.reply({
+      content: `Can only cancel **pending** orders (status: \`${order.status}\`).`,
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const reason = interaction.options.getString('reason') || `Cancelled by staff <@${interaction.user.id}>`;
+  const result = cancelOrder(order.id, reason);
+  if (!result.ok) {
+    await interaction.reply({ content: `Could not cancel (status: \`${order.status}\`).`, ephemeral: true });
+    return;
+  }
+
+  if (order.thread_id) {
+    try {
+      const thread = await interaction.client.channels.fetch(order.thread_id);
+      if (thread?.isThread()) {
+        await thread.send(
+          `❌ Claim **${order.reference_code}** cancelled by staff. Stock returned (${order.quantity}x ${order.product_name}). Reason: ${reason}`,
+        );
+        await thread.setLocked(true, 'Claim cancelled by staff');
+        await thread.setArchived(true, 'Claim cancelled by staff');
+      }
+    } catch (err) {
+      console.error('Failed to close cancelled thread:', err.message);
+    }
+  }
+
+  await refreshStockpost(interaction.client);
+  await interaction.reply({
+    content: `Cancelled **${order.reference_code}** — returned **${order.quantity}x ${order.product_name}** to stock.`,
+    ephemeral: true,
   });
 }
 
@@ -465,6 +526,10 @@ export async function handleSlashCommand(interaction) {
       return handlePaid(interaction);
     case 'shipped':
       return handleShipped(interaction);
+    case 'cancel':
+      return handleCancel(interaction);
+    case 'shipping':
+      return handleShippingCommand(interaction);
     case 'ban':
       return handleBan(interaction);
     case 'unban':

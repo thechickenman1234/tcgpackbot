@@ -25,6 +25,9 @@ import {
 } from './orderService.js';
 import { buildPaymentEmbed } from './paymentEmbed.js';
 import { handlePostClaimSaleState } from './saleAnnouncements.js';
+import { UPDATE_SHIPPING_BUTTON_PREFIX } from '../ui/customIds.js';
+
+export { UPDATE_SHIPPING_BUTTON_PREFIX };
 
 export function checkBuyerPurchaseLimit(buyerId, product, quantity) {
   const maxPerBuyer = getProductMaxPerBuyer(product);
@@ -43,6 +46,15 @@ export function formatLimitRejectMessage(productName, limit) {
     return `Limit reached for \`${productName}\`: max **${limit.maxPerBuyer}** per person.`;
   }
   return `Limit for \`${productName}\` is **${limit.maxPerBuyer}** per person — you can claim up to **${limit.remaining}** more.`;
+}
+
+function shippingUpdateRow(orderId) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${UPDATE_SHIPPING_BUTTON_PREFIX}${orderId}`)
+      .setLabel('Update shipping')
+      .setStyle(ButtonStyle.Secondary),
+  );
 }
 
 async function briefReply(message, text) {
@@ -67,9 +79,32 @@ export function resolveClaimProduct(productName) {
   return { ok: false, reason: 'need_product' };
 }
 
+async function postTopUpUpdate(order, buyerUser, added, shippingDetails) {
+  if (!order.thread_id) return null;
+
+  try {
+    const thread = await buyerUser.client.channels.fetch(order.thread_id);
+    if (!thread?.isThread()) return null;
+
+    const details = shippingDetails ?? buyerDetailsFromRow(getBuyer(buyerUser.id));
+    await thread.send({
+      content: [
+        `<@${buyerUser.id}> · <@&${config.staffRoleId}>`,
+        `**Claim updated:** +${added} → now **${order.quantity}x ${order.product_name}** (${formatAud(order.total_cents)})`,
+        `Order: \`${order.reference_code}\` — pay the **new total** below.`,
+      ].join('\n'),
+      embeds: details ? [buildPaymentEmbed(order, details)] : [],
+      components: [shippingUpdateRow(order.id)],
+    });
+    return thread;
+  } catch (err) {
+    console.error('Failed to post top-up update:', err);
+    return null;
+  }
+}
+
 /**
- * Create order + private thread. Posts PayID immediately when shipping details exist;
- * otherwise posts the intake-form fallback button.
+ * Create order + private thread, or top up an existing pending claim.
  */
 export async function fulfillClaim({
   channel,
@@ -98,6 +133,13 @@ export async function fulfillClaim({
   }
 
   const order = created.order;
+
+  if (created.toppedUp) {
+    const thread = await postTopUpUpdate(order, buyerUser, created.added, shippingDetails);
+    await handlePostClaimSaleState(channel, getProductById(product.id));
+    return { ok: true, order, thread, toppedUp: true, added: created.added };
+  }
+
   const threadName = `${order.reference_code} · ${buyerUser.username}`.slice(0, 100);
 
   let thread;
@@ -132,6 +174,7 @@ export async function fulfillClaim({
           `Order: \`${order.reference_code}\``,
         ].join('\n'),
         embeds: [buildPaymentEmbed(order, details)],
+        components: [shippingUpdateRow(order.id)],
       });
     } else {
       await thread.send({
@@ -158,7 +201,7 @@ export async function fulfillClaim({
 
   await handlePostClaimSaleState(channel, getProductById(product.id));
 
-  return { ok: true, order, thread };
+  return { ok: true, order, thread, toppedUp: false };
 }
 
 export async function handleClaimMessage(message) {
@@ -221,12 +264,7 @@ export async function handleClaimMessage(message) {
   });
 
   if (!result.ok) {
-    if (result.reason === 'duplicate') {
-      await briefReply(
-        message,
-        `You already have an open claim for \`${product.name}\` (${result.existing.reference_code}).`,
-      );
-    } else if (result.reason === 'sold_out') {
+    if (result.reason === 'sold_out') {
       await briefReply(message, `\`${product.name}\` is sold out.`);
     } else if (result.reason === 'limit') {
       await briefReply(message, formatLimitRejectMessage(product.name, result));

@@ -90,6 +90,11 @@ export function initDatabase() {
       FOREIGN KEY (product_id) REFERENCES products(id)
     );
 
+    CREATE TABLE IF NOT EXISTS bot_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
     CREATE INDEX IF NOT EXISTS idx_orders_buyer ON orders(buyer_id);
     CREATE INDEX IF NOT EXISTS idx_orders_deadline ON orders(payment_deadline_at);
@@ -104,6 +109,7 @@ export function initDatabase() {
   ensureColumn('products', 'shipping_cents', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn('products', 'max_per_buyer', 'INTEGER');
   ensureColumn('orders', 'shipping_cents', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('orders', 'reminder_sent_at', 'TEXT');
 
   return db;
 }

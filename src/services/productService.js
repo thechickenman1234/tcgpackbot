@@ -22,10 +22,16 @@ export function createProduct({
   return getProductById(result.lastInsertRowid);
 }
 
-export function updateProductStock(productId, quantity) {
+export function updateProductStock(productId, quantity, { reactivate = true } = {}) {
   getDb().prepare(`
     UPDATE products SET quantity_available = ?, updated_at = ? WHERE id = ?
   `).run(quantity, nowIso(), productId);
+
+  if (reactivate && quantity > 0) {
+    setProductActive(productId, true);
+  }
+
+  return getProductById(productId);
 }
 
 export function setProductActive(productId, active) {
@@ -105,10 +111,28 @@ export function reserveStock(productId, quantity) {
   return getProductById(productId);
 }
 
-export function releaseStock(productId, quantity) {
+export function releaseStock(productId, quantity, { reactivate = true } = {}) {
   getDb().prepare(`
     UPDATE products
     SET quantity_available = quantity_available + ?, updated_at = ?
     WHERE id = ?
   `).run(quantity, nowIso(), productId);
+
+  const product = getProductById(productId);
+  if (reactivate && product?.quantity_available > 0 && !product.active) {
+    setProductActive(productId, true);
+  }
+  return getProductById(productId);
+}
+
+export function findProductByName(productName) {
+  const db = getDb();
+  const slug = slugify(productName);
+
+  const bySlug = db.prepare('SELECT * FROM products WHERE slug = ?').get(slug);
+  if (bySlug) return bySlug;
+
+  return db.prepare(`
+    SELECT * FROM products WHERE lower(name) = lower(?)
+  `).get(productName.trim());
 }

@@ -3,11 +3,10 @@ import {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
-  StringSelectMenuBuilder,
 } from 'discord.js';
 import { config } from '../config.js';
 import { parseCityStateZip } from '../utils/claimParser.js';
-import { formatAud, hasBannedRole } from '../utils/permissions.js';
+import { hasBannedRole } from '../utils/permissions.js';
 import {
   buyerDetailsFromRow,
   getBuyer,
@@ -15,46 +14,16 @@ import {
   isBuyerBanned,
   updateBuyerDetails,
 } from '../services/buyerService.js';
-import {
-  getProductById,
-  getProductMaxPerBuyer,
-  listActiveProducts,
-} from '../services/productService.js';
+import { getProductById } from '../services/productService.js';
 import {
   checkBuyerPurchaseLimit,
   fulfillClaim,
   formatLimitRejectMessage,
 } from '../services/claimService.js';
+import { CLAIM_SELECT_ID, buildClaimSelectRow } from '../ui/claimSelect.js';
+import { CLAIM_MODAL_PREFIX } from '../ui/customIds.js';
 
-export const CLAIM_SELECT_ID = 'claim_select';
-export const CLAIM_MODAL_PREFIX = 'claim_modal:';
-
-export function buildClaimSelectRow(products = listActiveProducts()) {
-  const options = products
-    .filter((p) => p.quantity_available > 0)
-    .slice(0, 25)
-    .map((p) => {
-      const ship = p.shipping_cents
-        ? ` + ${formatAud(p.shipping_cents)} ship`
-        : '';
-      const limit = getProductMaxPerBuyer(p);
-      const limitNote = limit ? ` · max ${limit}/person` : '';
-      return {
-        label: p.name.slice(0, 100),
-        description: `${formatAud(p.price_cents)}${ship} · ${p.quantity_available} left${limitNote}`.slice(0, 100),
-        value: String(p.id),
-      };
-    });
-
-  if (!options.length) return null;
-
-  return new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId(CLAIM_SELECT_ID)
-      .setPlaceholder('Claim a product…')
-      .addOptions(options),
-  );
-}
+export { CLAIM_SELECT_ID, CLAIM_MODAL_PREFIX, buildClaimSelectRow };
 
 function buildClaimModal(productId, includeShipping) {
   const modal = new ModalBuilder()
@@ -75,7 +44,6 @@ function buildClaimModal(productId, includeShipping) {
   );
 
   if (includeShipping) {
-    // Discord modals max 5 fields — city/state/zip combined in one input
     modal.addComponents(
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
@@ -261,11 +229,7 @@ export async function handleClaimModalSubmit(interaction) {
   });
 
   if (!result.ok) {
-    if (result.reason === 'duplicate') {
-      await interaction.editReply(
-        `You already have an open claim for \`${product.name}\` (${result.existing.reference_code}).`,
-      );
-    } else if (result.reason === 'sold_out') {
+    if (result.reason === 'sold_out') {
       await interaction.editReply(`\`${product.name}\` is sold out.`);
     } else if (result.reason === 'limit') {
       await interaction.editReply(formatLimitRejectMessage(product.name, result));
@@ -274,6 +238,14 @@ export async function handleClaimModalSubmit(interaction) {
     } else {
       await interaction.editReply('Could not complete that claim. Try again or ping staff.');
     }
+    return;
+  }
+
+  if (result.toppedUp) {
+    const threadMention = result.thread?.id ? ` → <#${result.thread.id}>` : '';
+    await interaction.editReply(
+      `Claim updated: **+${result.added}** → **${result.order.quantity}x ${product.name}**. New total is in your ticket${threadMention}.`,
+    );
     return;
   }
 

@@ -6,6 +6,13 @@ import {
   handleClaimModalSubmit,
   handleClaimSelect,
 } from './claimUi.js';
+import {
+  SHIPPING_MODAL_ID,
+  SHIPPING_MODAL_USER_PREFIX,
+  UPDATE_SHIPPING_BUTTON_PREFIX,
+  handleShippingModalSubmit,
+  handleUpdateShippingButton,
+} from './shippingUi.js';
 
 export async function handleInteractionCreate(interaction) {
   try {
@@ -32,6 +39,19 @@ export async function handleInteractionCreate(interaction) {
     if (interaction.isModalSubmit() && interaction.customId.startsWith('intake_modal:')) {
       await handleIntakeSubmit(interaction);
       return;
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith(UPDATE_SHIPPING_BUTTON_PREFIX)) {
+      await handleUpdateShippingButton(interaction);
+      return;
+    }
+
+    if (
+      interaction.isModalSubmit()
+      && (interaction.customId === SHIPPING_MODAL_ID
+        || interaction.customId.startsWith(SHIPPING_MODAL_USER_PREFIX))
+    ) {
+      await handleShippingModalSubmit(interaction);
     }
   } catch (err) {
     console.error('Interaction error:', err);

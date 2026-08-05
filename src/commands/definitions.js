@@ -25,7 +25,7 @@ export const commandDefinitions = [
     .addSubcommand((sub) =>
       sub
         .setName('stock')
-        .setDescription('Set remaining stock for a product')
+        .setDescription('Set remaining stock for a product (reactivates if qty > 0)')
         .addStringOption((o) => o.setName('name').setDescription('Product name').setRequired(true))
         .addIntegerOption((o) => o.setName('quantity').setDescription('New quantity').setRequired(true).setMinValue(0)),
     )
@@ -55,6 +55,12 @@ export const commandDefinitions = [
         .setDescription('Update flat shipping cost for a product')
         .addStringOption((o) => o.setName('name').setDescription('Product name').setRequired(true))
         .addNumberOption((o) => o.setName('shipping').setDescription('Shipping in AUD e.g. 15').setRequired(true).setMinValue(0)),
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('activate')
+        .setDescription('Put a product back on the live sale')
+        .addStringOption((o) => o.setName('name').setDescription('Product name').setRequired(true)),
     )
     .addSubcommand((sub) =>
       sub
@@ -90,6 +96,24 @@ export const commandDefinitions = [
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addStringOption((o) =>
       o.setName('reference').setDescription('Optional order reference if not run inside the ticket').setRequired(false),
+    ),
+
+  new SlashCommandBuilder()
+    .setName('cancel')
+    .setDescription('Cancel a pending claim ticket and return stock')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addStringOption((o) =>
+      o.setName('reason').setDescription('Optional cancel reason').setRequired(false),
+    )
+    .addStringOption((o) =>
+      o.setName('reference').setDescription('Optional order reference if not run inside the ticket').setRequired(false),
+    ),
+
+  new SlashCommandBuilder()
+    .setName('shipping')
+    .setDescription('Update saved shipping details')
+    .addUserOption((o) =>
+      o.setName('user').setDescription('Staff only: update another buyer').setRequired(false),
     ),
 
   new SlashCommandBuilder()

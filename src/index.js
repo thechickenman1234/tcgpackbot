@@ -28,6 +28,7 @@ client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}`);
   console.log(`Claims channel: ${config.claimsChannelId}`);
   console.log(`Payment deadline: ${config.paymentDeadlineHours}h`);
+  console.log(`Payment reminder: ${config.paymentReminderHoursBefore}h before deadline`);
   console.log(`Archive after shipped: ${config.archiveDaysAfterShipped}d`);
 
   try {
