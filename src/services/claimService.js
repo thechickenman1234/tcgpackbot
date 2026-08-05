@@ -15,11 +15,35 @@ import {
 import {
   findActiveProductByName,
   getProductById,
+  getProductMaxPerBuyer,
   listActiveProducts,
 } from './productService.js';
-import { attachThread, createClaimOrder } from './orderService.js';
+import {
+  attachThread,
+  createClaimOrder,
+  getBuyerClaimedQuantity,
+} from './orderService.js';
 import { buildPaymentEmbed } from './paymentEmbed.js';
 import { handlePostClaimSaleState } from './saleAnnouncements.js';
+
+export function checkBuyerPurchaseLimit(buyerId, product, quantity) {
+  const maxPerBuyer = getProductMaxPerBuyer(product);
+  if (maxPerBuyer == null) return { ok: true };
+
+  const already = getBuyerClaimedQuantity(buyerId, product.id);
+  const remaining = Math.max(0, maxPerBuyer - already);
+  if (already + quantity > maxPerBuyer) {
+    return { ok: false, maxPerBuyer, already, remaining };
+  }
+  return { ok: true, maxPerBuyer, already, remaining };
+}
+
+export function formatLimitRejectMessage(productName, limit) {
+  if (limit.remaining <= 0) {
+    return `Limit reached for \`${productName}\`: max **${limit.maxPerBuyer}** per person.`;
+  }
+  return `Limit for \`${productName}\` is **${limit.maxPerBuyer}** per person — you can claim up to **${limit.remaining}** more.`;
+}
 
 async function briefReply(message, text) {
   try {
@@ -63,7 +87,14 @@ export async function fulfillClaim({
   });
 
   if (!created.ok) {
-    return { ok: false, reason: created.reason, existing: created.existing };
+    return {
+      ok: false,
+      reason: created.reason,
+      existing: created.existing,
+      maxPerBuyer: created.maxPerBuyer,
+      already: created.already,
+      remaining: created.remaining,
+    };
   }
 
   const order = created.order;
@@ -175,6 +206,12 @@ export async function handleClaimMessage(message) {
     return;
   }
 
+  const limitCheck = checkBuyerPurchaseLimit(message.author.id, product, parsed.quantity);
+  if (!limitCheck.ok) {
+    await briefReply(message, formatLimitRejectMessage(product.name, limitCheck));
+    return;
+  }
+
   const result = await fulfillClaim({
     channel: message.channel,
     buyerUser: message.author,
@@ -191,6 +228,8 @@ export async function handleClaimMessage(message) {
       );
     } else if (result.reason === 'sold_out') {
       await briefReply(message, `\`${product.name}\` is sold out.`);
+    } else if (result.reason === 'limit') {
+      await briefReply(message, formatLimitRejectMessage(product.name, result));
     } else if (result.reason === 'thread_failed') {
       await briefReply(message, 'Claim accepted in DB but thread creation failed — staff will follow up.');
     }

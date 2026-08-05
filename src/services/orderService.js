@@ -25,12 +25,36 @@ export function hasOpenOrderForBuyerProduct(buyerId, productId) {
   `).get(buyerId, productId);
 }
 
+/** Units already claimed by this buyer for the product (excludes cancelled). */
+export function getBuyerClaimedQuantity(buyerId, productId) {
+  const row = getDb().prepare(`
+    SELECT COALESCE(SUM(quantity), 0) AS total
+    FROM orders
+    WHERE buyer_id = ? AND product_id = ? AND status NOT IN ('cancelled')
+  `).get(buyerId, productId);
+  return row?.total ?? 0;
+}
+
 export function createClaimOrder({ buyerId, product, quantity, claimMessageId }) {
   ensureBuyer(buyerId);
 
   const duplicate = hasOpenOrderForBuyerProduct(buyerId, product.id);
   if (duplicate) {
     return { ok: false, reason: 'duplicate', existing: duplicate };
+  }
+
+  const maxPerBuyer = product.max_per_buyer;
+  if (maxPerBuyer != null && maxPerBuyer > 0) {
+    const already = getBuyerClaimedQuantity(buyerId, product.id);
+    if (already + quantity > maxPerBuyer) {
+      return {
+        ok: false,
+        reason: 'limit',
+        maxPerBuyer,
+        already,
+        remaining: Math.max(0, maxPerBuyer - already),
+      };
+    }
   }
 
   const reserved = reserveStock(product.id, quantity);

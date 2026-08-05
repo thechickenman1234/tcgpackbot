@@ -13,6 +13,13 @@ export const commandDefinitions = [
         .addNumberOption((o) => o.setName('price').setDescription('Price in AUD e.g. 150').setRequired(true))
         .addIntegerOption((o) => o.setName('quantity').setDescription('Units available').setRequired(true).setMinValue(0))
         .addNumberOption((o) => o.setName('shipping').setDescription('Flat shipping in AUD e.g. 15').setRequired(false))
+        .addIntegerOption((o) =>
+          o
+            .setName('limit')
+            .setDescription('Optional max units each person can buy (omit = no limit)')
+            .setRequired(false)
+            .setMinValue(1),
+        )
         .addStringOption((o) => o.setName('sale_window').setDescription('Optional sale window text').setRequired(false)),
     )
     .addSubcommand((sub) =>
@@ -21,6 +28,19 @@ export const commandDefinitions = [
         .setDescription('Set remaining stock for a product')
         .addStringOption((o) => o.setName('name').setDescription('Product name').setRequired(true))
         .addIntegerOption((o) => o.setName('quantity').setDescription('New quantity').setRequired(true).setMinValue(0)),
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('limit')
+        .setDescription('Set or clear per-person purchase limit for a product')
+        .addStringOption((o) => o.setName('name').setDescription('Product name').setRequired(true))
+        .addIntegerOption((o) =>
+          o
+            .setName('max')
+            .setDescription('Max units per person (0 = remove limit)')
+            .setRequired(true)
+            .setMinValue(0),
+        ),
     )
     .addSubcommand((sub) =>
       sub

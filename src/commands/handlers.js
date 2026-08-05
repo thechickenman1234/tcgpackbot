@@ -5,9 +5,11 @@ import { buildClaimSelectRow } from '../handlers/claimUi.js';
 import {
   createProduct,
   findActiveProductByName,
+  getProductMaxPerBuyer,
   listActiveProducts,
   listAllProducts,
   setProductActive,
+  setProductMaxPerBuyer,
   setProductPrice,
   setProductShipping,
   updateProductStock,
@@ -63,6 +65,7 @@ async function handleProduct(interaction) {
     const price = interaction.options.getNumber('price', true);
     const quantity = interaction.options.getInteger('quantity', true);
     const shipping = interaction.options.getNumber('shipping') ?? 0;
+    const limit = interaction.options.getInteger('limit');
     const saleWindow = interaction.options.getString('sale_window');
 
     if (price <= 0) {
@@ -80,13 +83,17 @@ async function handleProduct(interaction) {
         priceCents: dollarsToCents(price),
         shippingCents: dollarsToCents(shipping),
         quantity,
+        maxPerBuyer: limit ?? null,
         saleWindow,
       });
       const shipNote = product.shipping_cents
         ? ` + ${formatAud(product.shipping_cents)} shipping`
         : '';
+      const limitNote = getProductMaxPerBuyer(product)
+        ? ` · max ${product.max_per_buyer}/person`
+        : '';
       await interaction.reply({
-        content: `Added **${product.name}** — ${formatAud(product.price_cents)}${shipNote} × ${product.quantity_available} available.`,
+        content: `Added **${product.name}** — ${formatAud(product.price_cents)}${shipNote} × ${product.quantity_available} available${limitNote}.`,
         ephemeral: true,
       });
     } catch (err) {
@@ -137,6 +144,25 @@ async function handleProduct(interaction) {
     return;
   }
 
+  if (sub === 'limit') {
+    const name = interaction.options.getString('name', true);
+    const max = interaction.options.getInteger('max', true);
+    const product = findActiveProductByName(name) ?? listAllProducts().find((p) => p.name.toLowerCase() === name.toLowerCase());
+    if (!product) {
+      await interaction.reply({ content: 'Product not found.', ephemeral: true });
+      return;
+    }
+    const value = max === 0 ? null : max;
+    setProductMaxPerBuyer(product.id, value);
+    await interaction.reply({
+      content: value
+        ? `Per-person limit for **${product.name}** set to **${value}**.`
+        : `Per-person limit for **${product.name}** cleared (unlimited).`,
+      ephemeral: true,
+    });
+    return;
+  }
+
   if (sub === 'deactivate') {
     const name = interaction.options.getString('name', true);
     const product = findActiveProductByName(name);
@@ -158,7 +184,9 @@ async function handleProduct(interaction) {
     const lines = products.map((p) => {
       const flag = p.active ? '🟢' : '⚫';
       const ship = p.shipping_cents ? ` + ${formatAud(p.shipping_cents)} ship` : '';
-      return `${flag} **${p.name}** — ${formatAud(p.price_cents)}${ship} · qty ${p.quantity_available}${p.sale_window ? ` · ${p.sale_window}` : ''}`;
+      const limit = getProductMaxPerBuyer(p);
+      const limitNote = limit ? ` · max ${limit}/person` : '';
+      return `${flag} **${p.name}** — ${formatAud(p.price_cents)}${ship} · qty ${p.quantity_available}${limitNote}${p.sale_window ? ` · ${p.sale_window}` : ''}`;
     });
     await interaction.reply({ content: lines.join('\n').slice(0, 1900), ephemeral: true });
   }
@@ -198,16 +226,20 @@ async function handleStockpost(interaction) {
       ].join('\n'),
     )
     .addFields(
-      products.map((p) => ({
-        name: p.name,
-        value: [
-          `Price: **${formatAud(p.price_cents)}**`,
-          p.shipping_cents ? `Shipping: **${formatAud(p.shipping_cents)}** (flat)` : 'Shipping: included / none',
-          `Available: **${p.quantity_available}**`,
-          p.sale_window ? `Window: ${p.sale_window}` : null,
-        ].filter(Boolean).join('\n'),
-        inline: true,
-      })),
+      products.map((p) => {
+        const limit = getProductMaxPerBuyer(p);
+        return {
+          name: p.name,
+          value: [
+            `Price: **${formatAud(p.price_cents)}**`,
+            p.shipping_cents ? `Shipping: **${formatAud(p.shipping_cents)}** (flat)` : 'Shipping: included / none',
+            `Available: **${p.quantity_available}**`,
+            limit ? `Limit: **${limit}** per person` : null,
+            p.sale_window ? `Window: ${p.sale_window}` : null,
+          ].filter(Boolean).join('\n'),
+          inline: true,
+        };
+      }),
     )
     .setFooter({
       text: `Payment via PayID · ${config.paymentDeadlineHours}h deadline · confirmed manually by staff`,

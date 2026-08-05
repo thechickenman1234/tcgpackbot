@@ -58,6 +58,7 @@ export function initDatabase() {
       price_cents INTEGER NOT NULL,
       shipping_cents INTEGER NOT NULL DEFAULT 0,
       quantity_available INTEGER NOT NULL DEFAULT 0,
+      max_per_buyer INTEGER,
       active INTEGER NOT NULL DEFAULT 1,
       sale_window TEXT,
       created_at TEXT NOT NULL,
@@ -101,6 +102,7 @@ export function initDatabase() {
   ensureColumn('buyers', 'state', 'TEXT');
   ensureColumn('buyers', 'zip', 'TEXT');
   ensureColumn('products', 'shipping_cents', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('products', 'max_per_buyer', 'INTEGER');
   ensureColumn('orders', 'shipping_cents', 'INTEGER NOT NULL DEFAULT 0');
 
   return db;

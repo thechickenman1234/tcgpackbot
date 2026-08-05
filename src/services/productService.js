@@ -6,6 +6,7 @@ export function createProduct({
   priceCents,
   quantity,
   shippingCents = 0,
+  maxPerBuyer = null,
   saleWindow = null,
 }) {
   const db = getDb();
@@ -14,9 +15,9 @@ export function createProduct({
 
   const result = db.prepare(`
     INSERT INTO products (
-      name, slug, price_cents, shipping_cents, quantity_available, active, sale_window, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)
-  `).run(name, slug, priceCents, shippingCents, quantity, saleWindow, ts, ts);
+      name, slug, price_cents, shipping_cents, quantity_available, max_per_buyer, active, sale_window, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+  `).run(name, slug, priceCents, shippingCents, quantity, maxPerBuyer, saleWindow, ts, ts);
 
   return getProductById(result.lastInsertRowid);
 }
@@ -43,6 +44,19 @@ export function setProductShipping(productId, shippingCents) {
   getDb().prepare(`
     UPDATE products SET shipping_cents = ?, updated_at = ? WHERE id = ?
   `).run(shippingCents, nowIso(), productId);
+}
+
+/** null clears the per-buyer limit (unlimited). */
+export function setProductMaxPerBuyer(productId, maxPerBuyer) {
+  getDb().prepare(`
+    UPDATE products SET max_per_buyer = ?, updated_at = ? WHERE id = ?
+  `).run(maxPerBuyer, nowIso(), productId);
+}
+
+export function getProductMaxPerBuyer(product) {
+  const n = product?.max_per_buyer;
+  if (n == null || n <= 0) return null;
+  return n;
 }
 
 export function getProductById(id) {

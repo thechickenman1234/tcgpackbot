@@ -15,8 +15,16 @@ import {
   isBuyerBanned,
   updateBuyerDetails,
 } from '../services/buyerService.js';
-import { getProductById, listActiveProducts } from '../services/productService.js';
-import { fulfillClaim } from '../services/claimService.js';
+import {
+  getProductById,
+  getProductMaxPerBuyer,
+  listActiveProducts,
+} from '../services/productService.js';
+import {
+  checkBuyerPurchaseLimit,
+  fulfillClaim,
+  formatLimitRejectMessage,
+} from '../services/claimService.js';
 
 export const CLAIM_SELECT_ID = 'claim_select';
 export const CLAIM_MODAL_PREFIX = 'claim_modal:';
@@ -29,9 +37,11 @@ export function buildClaimSelectRow(products = listActiveProducts()) {
       const ship = p.shipping_cents
         ? ` + ${formatAud(p.shipping_cents)} ship`
         : '';
+      const limit = getProductMaxPerBuyer(p);
+      const limitNote = limit ? ` · max ${limit}/person` : '';
       return {
         label: p.name.slice(0, 100),
-        description: `${formatAud(p.price_cents)}${ship} · ${p.quantity_available} left`.slice(0, 100),
+        description: `${formatAud(p.price_cents)}${ship} · ${p.quantity_available} left${limitNote}`.slice(0, 100),
         value: String(p.id),
       };
     });
@@ -133,6 +143,15 @@ export async function handleClaimSelect(interaction) {
     return;
   }
 
+  const limitCheck = checkBuyerPurchaseLimit(interaction.user.id, product, 1);
+  if (!limitCheck.ok && limitCheck.remaining <= 0) {
+    await interaction.reply({
+      content: formatLimitRejectMessage(product.name, limitCheck),
+      ephemeral: true,
+    });
+    return;
+  }
+
   const includeShipping = !hasCompleteShippingDetails(interaction.user.id);
   await interaction.showModal(buildClaimModal(productId, includeShipping));
 }
@@ -164,6 +183,15 @@ export async function handleClaimModalSubmit(interaction) {
       content: product.quantity_available <= 0
         ? `\`${product.name}\` is sold out.`
         : `Only ${product.quantity_available} left of \`${product.name}\`.`,
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const limitCheck = checkBuyerPurchaseLimit(interaction.user.id, product, quantity);
+  if (!limitCheck.ok) {
+    await interaction.reply({
+      content: formatLimitRejectMessage(product.name, limitCheck),
       ephemeral: true,
     });
     return;
@@ -239,6 +267,8 @@ export async function handleClaimModalSubmit(interaction) {
       );
     } else if (result.reason === 'sold_out') {
       await interaction.editReply(`\`${product.name}\` is sold out.`);
+    } else if (result.reason === 'limit') {
+      await interaction.editReply(formatLimitRejectMessage(product.name, result));
     } else if (result.reason === 'thread_failed') {
       await interaction.editReply('Claim saved but the private thread failed — staff will follow up.');
     } else {

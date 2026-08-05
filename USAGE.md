@@ -10,8 +10,11 @@ Buyers claim stock → get a private ticket → pay via PayID → you manually c
 1. Make sure the bot is online.
 2. Add the product for this sale:
    ```
-   /product add name:mega dream price:150 quantity:10 shipping:15
+   /product add name:mega dream price:150 quantity:10 shipping:15 limit:2
    ```
+   - `shipping` and `limit` are optional  
+   - `limit` = max units **each person** can buy of that product  
+   - Omit `limit` for no per-person cap
 3. Post the sale in your **claims channel**:
    ```
    /stockpost
@@ -48,6 +51,12 @@ That’s the whole loop. One active claim sale at a time.
 
 Returning buyers only need quantity — their shipping details are saved.
 
+### Per-person limits
+If a product has a limit (e.g. max 2 per person):
+- the stock post and dropdown show it
+- a claim above the remaining allowance is rejected
+- cancelled orders do **not** count toward the limit (paid / shipped / archived do)
+
 ### Text claims (also work)
 If only **one** product is live, the product name can be left out.
 
@@ -61,7 +70,7 @@ Examples:
 - `2x mega dream`
 
 Valid claim → ✅ reaction + private ticket.  
-Invalid / sold out / duplicate → short error (or silent if banned).
+Invalid / sold out / over limit / duplicate → short error (or silent if banned).
 
 ---
 
@@ -69,12 +78,13 @@ Invalid / sold out / duplicate → short error (or silent if banned).
 
 | Command | What it does |
 |---------|----------------|
-| `/product add` | Add a product (`name`, `price`, `quantity`, optional `shipping`, optional `sale_window`) |
+| `/product add` | Add a product (`name`, `price`, `quantity`, optional `shipping`, optional `limit`, optional `sale_window`) |
 | `/product stock` | Change remaining quantity |
 | `/product price` | Change unit price |
 | `/product shipping` | Change flat shipping cost |
+| `/product limit` | Set or clear per-person purchase limit (`max:0` = unlimited) |
 | `/product deactivate` | Take a product off the live sale |
-| `/product list` | List all products |
+| `/product list` | List all products (shows limit when set) |
 | `/stockpost` | Post the public sale embed + claim dropdown (**must be in claims channel**) |
 | `/endsale` | End the sale + post the “CLAIM SALE IS NOW OVER” message |
 | `/paid` | Mark ticket as paid (run in the ticket thread, or pass `reference`) |
@@ -85,14 +95,21 @@ Invalid / sold out / duplicate → short error (or silent if banned).
 | `/appeal submit` | Buyer submits an appeal |
 | `/appeal reject` / `/appeal history` | Staff review tools |
 
-### Example: start Mega Dream sale
+### Example: start Mega Dream sale (with 2-per-person limit)
 ```
-/product add name:mega dream price:150 quantity:10 shipping:15
+/product add name:mega dream price:150 quantity:10 shipping:15 limit:2
 /stockpost
 ```
 
+### Example: change or remove a limit later
+```
+/product limit name:mega dream max:3
+/product limit name:mega dream max:0
+```
+
 Price = per unit.  
-Shipping = **flat per order** (added once to the total).
+Shipping = **flat per order** (added once to the total).  
+Limit = **max units per Discord user** for that product (optional).
 
 ---
 
@@ -174,7 +191,7 @@ Important `.env` values:
 | `PAYMENT_DEADLINE_HOURS` | Default `24` |
 | `ARCHIVE_DAYS_AFTER_SHIPPED` | Default `7` |
 
-Slash commands register **automatically when the bot starts**. Restart the bot after updates.
+Slash commands register **automatically when the bot starts**. Restart the bot after updates so new options (like `limit`) appear.
 
 ---
 
@@ -185,14 +202,15 @@ Slash commands register **automatically when the bot starts**. Restart the bot a
 | Typing “Claim sale mega dream $150…” in chat | That’s not a command. Use `/product add` then `/stockpost`. |
 | `/stockpost` outside claims channel | Bot will refuse. Run it in the claims channel. |
 | Buyer says product unknown | Product wasn’t added, or name doesn’t match. Check `/product list`. |
-| Commands missing | Restart the bot so commands re-register. |
+| Buyer hits “limit reached” | They already claimed up to `/product limit` for that product. Raise or clear with `/product limit`. |
+| Commands / new options missing | Restart the bot so commands re-register. |
 | Staff can’t see tickets | Give staff **Manage Threads** (and the Staff role). |
 
 ---
 
 ## Suggested staff checklist per sale
 
-- [ ] `/product add` with price, qty, shipping  
+- [ ] `/product add` with price, qty, shipping, and optional per-person `limit`  
 - [ ] `/stockpost` in claims channel  
 - [ ] Watch tickets for payment screenshots  
 - [ ] `/paid` when confirmed  
