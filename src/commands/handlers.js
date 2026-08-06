@@ -14,7 +14,7 @@ import {
   setProductShipping,
   updateProductStock,
 } from '../services/productService.js';
-import { endClaimSale } from '../services/saleAnnouncements.js';
+import { endClaimSale, announceSaleStart } from '../services/saleAnnouncements.js';
 import {
   cancelOrder,
   getOrderByReference,
@@ -259,6 +259,12 @@ async function handleStockpost(interaction) {
     fetchReply: true,
   });
   rememberStockpost(interaction.channelId, message.id);
+
+  try {
+    await announceSaleStart(interaction.channel, products.map((p) => p.name));
+  } catch (err) {
+    console.error('Sale start announce failed:', err);
+  }
 }
 
 async function handleEndSale(interaction) {
