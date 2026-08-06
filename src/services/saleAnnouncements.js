@@ -9,6 +9,7 @@ export function buildSaleOverMessage(productNames = []) {
     : 'CLAIM SALE';
 
   return [
+    '@everyone',
     `**[${label}] CLAIM SALE IS NOW OVER!!!**`,
     'Please check the thread that opened up for payment and shipping details.',
     `Payments must be sent within **${hours} hours**, or you will be banned from all future Claim Sales.`,
@@ -17,7 +18,20 @@ export function buildSaleOverMessage(productNames = []) {
 }
 
 export function buildSoldOutMessage(productName) {
-  return `**[${productName.toUpperCase()}] SOLD OUT!** No more claims for this product.`;
+  return `@everyone **[${productName.toUpperCase()}] SOLD OUT!** No more claims for this product.`;
+}
+
+export function buildSaleStartMessage(productNames = []) {
+  const label = productNames.length
+    ? productNames.map((n) => n.toUpperCase()).join(' / ')
+    : 'CLAIM';
+
+  return `@everyone **THE ${label} CLAIM SALE HAS NOW BEGUN!! BE QUICK!!**`;
+}
+
+export async function announceSaleStart(channel, productNames) {
+  if (!channel?.isTextBased()) return;
+  await channel.send(buildSaleStartMessage(productNames));
 }
 
 export async function announceSoldOut(channel, productName) {
