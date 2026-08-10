@@ -108,6 +108,7 @@ export function initDatabase() {
   ensureColumn('buyers', 'zip', 'TEXT');
   ensureColumn('products', 'shipping_cents', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn('products', 'max_per_buyer', 'INTEGER');
+  ensureColumn('products', 'pricing_tiers', 'TEXT');
   ensureColumn('orders', 'shipping_cents', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn('orders', 'reminder_sent_at', 'TEXT');
 
