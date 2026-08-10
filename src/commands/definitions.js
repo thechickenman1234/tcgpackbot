@@ -58,6 +58,24 @@ export const commandDefinitions = [
     )
     .addSubcommand((sub) =>
       sub
+        .setName('tiers')
+        .setDescription('Set quantity-based pricing tiers (overrides flat price/shipping)')
+        .addStringOption((o) => o.setName('name').setDescription('Product name').setRequired(true))
+        .addStringOption((o) =>
+          o
+            .setName('tiers')
+            .setDescription('range:price:shipping per tier, e.g. 1-4:200:5,5-9:200:0,10+:197:0')
+            .setRequired(true),
+        ),
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('cleartiers')
+        .setDescription('Remove tiered pricing — goes back to the flat price/shipping')
+        .addStringOption((o) => o.setName('name').setDescription('Product name').setRequired(true)),
+    )
+    .addSubcommand((sub) =>
+      sub
         .setName('activate')
         .setDescription('Put a product back on the live sale')
         .addStringOption((o) => o.setName('name').setDescription('Product name').setRequired(true)),
