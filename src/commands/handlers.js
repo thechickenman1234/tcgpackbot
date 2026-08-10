@@ -2,16 +2,21 @@ import { EmbedBuilder } from 'discord.js';
 import { config } from '../config.js';
 import { formatAud, isStaff } from '../utils/permissions.js';
 import {
+  clearProductTiers,
   createProduct,
   findActiveProductByName,
   findProductByName,
+  formatTiersForDisplay,
   getProductMaxPerBuyer,
+  getProductTiers,
   listActiveProducts,
   listAllProducts,
+  parseTiersInput,
   setProductActive,
   setProductMaxPerBuyer,
   setProductPrice,
   setProductShipping,
+  setProductTiers,
   updateProductStock,
 } from '../services/productService.js';
 import { endClaimSale, announceSaleStart } from '../services/saleAnnouncements.js';
@@ -163,6 +168,49 @@ async function handleProduct(interaction) {
     return;
   }
 
+  if (sub === 'tiers') {
+    const name = interaction.options.getString('name', true);
+    const tiersInput = interaction.options.getString('tiers', true);
+    const product = resolveProductByName(name);
+    if (!product) {
+      await interaction.reply({ content: 'Product not found.', ephemeral: true });
+      return;
+    }
+    const parsed = parseTiersInput(tiersInput);
+    if (!parsed.ok) {
+      await interaction.reply({
+        content: `Could not set tiers: ${parsed.error}\nFormat: \`1-4:200:5,5-9:200:0,10+:197:0\` (range:price:shipping, in dollars).`,
+        ephemeral: true,
+      });
+      return;
+    }
+    setProductTiers(product.id, JSON.stringify(parsed.tiers));
+    const updated = resolveProductByName(name);
+    await interaction.reply({
+      content: `Tiered pricing set for **${updated.name}**:\n${formatTiersForDisplay(updated, formatAud)}`,
+      ephemeral: true,
+    });
+    await refreshStockpost(interaction.client);
+    return;
+  }
+
+  if (sub === 'cleartiers') {
+    const name = interaction.options.getString('name', true);
+    const product = resolveProductByName(name);
+    if (!product) {
+      await interaction.reply({ content: 'Product not found.', ephemeral: true });
+      return;
+    }
+    clearProductTiers(product.id);
+    const shipNote = product.shipping_cents ? ` + ${formatAud(product.shipping_cents)} shipping` : '';
+    await interaction.reply({
+      content: `Cleared tiered pricing for **${product.name}** — back to flat **${formatAud(product.price_cents)}**${shipNote}.`,
+      ephemeral: true,
+    });
+    await refreshStockpost(interaction.client);
+    return;
+  }
+
   if (sub === 'limit') {
     const name = interaction.options.getString('name', true);
     const max = interaction.options.getInteger('max', true);
@@ -224,10 +272,13 @@ async function handleProduct(interaction) {
     }
     const lines = products.map((p) => {
       const flag = p.active ? '🟢' : '⚫';
-      const ship = p.shipping_cents ? ` + ${formatAud(p.shipping_cents)} ship` : '';
       const limit = getProductMaxPerBuyer(p);
       const limitNote = limit ? ` · max ${limit}/person` : '';
-      return `${flag} **${p.name}** — ${formatAud(p.price_cents)}${ship} · qty ${p.quantity_available}${limitNote}${p.sale_window ? ` · ${p.sale_window}` : ''}`;
+      const tiers = getProductTiers(p);
+      const priceNote = tiers
+        ? ` — tiered pricing (${tiers.length} tiers, from ${formatAud(tiers[tiers.length - 1].priceCents)}/ea)`
+        : ` — ${formatAud(p.price_cents)}${p.shipping_cents ? ` + ${formatAud(p.shipping_cents)} ship` : ''}`;
+      return `${flag} **${p.name}**${priceNote} · qty ${p.quantity_available}${limitNote}${p.sale_window ? ` · ${p.sale_window}` : ''}`;
     });
     await interaction.reply({ content: lines.join('\n').slice(0, 1900), ephemeral: true });
   }
