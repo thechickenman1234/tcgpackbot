@@ -3,7 +3,7 @@ import { generateOrderReference } from '../utils/orderRef.js';
 import { addDaysIso, addHoursIso, nowIso } from '../utils/permissions.js';
 import { config } from '../config.js';
 import { ensureBuyer } from './buyerService.js';
-import { releaseStock, reserveStock } from './productService.js';
+import { releaseStock, reserveStock, resolveTierPricing } from './productService.js';
 
 export function getOrderById(id) {
   return getDb().prepare('SELECT * FROM orders WHERE id = ?').get(id);
@@ -25,7 +25,7 @@ export function getPendingOrderForBuyerProduct(buyerId, productId) {
   `).get(buyerId, productId);
 }
 
-/** @deprecated use getPendingOrderForBuyerProduct — kept for callers expecting open pending/paid */
+/** @deprecated use getPendingOrderForBuyerProduct â€” kept for callers expecting open pending/paid */
 export function hasOpenOrderForBuyerProduct(buyerId, productId) {
   return getDb().prepare(`
     SELECT * FROM orders
@@ -82,8 +82,8 @@ export function createClaimOrder({ buyerId, product, quantity, claimMessageId })
 
   const claimedAt = new Date();
   const referenceCode = generateOrderReference();
-  const shippingCents = product.shipping_cents || 0;
-  const totalCents = product.price_cents * quantity + shippingCents;
+  const pricing = resolveTierPricing(product, quantity);
+  const totalCents = pricing.priceCents * quantity + pricing.shippingCents;
 
   const result = getDb().prepare(`
     INSERT INTO orders (
@@ -97,8 +97,8 @@ export function createClaimOrder({ buyerId, product, quantity, claimMessageId })
     product.id,
     product.name,
     quantity,
-    product.price_cents,
-    shippingCents,
+    pricing.priceCents,
+    pricing.shippingCents,
     totalCents,
     claimMessageId,
     claimedAt.toISOString(),
@@ -122,20 +122,22 @@ export function topUpPendingOrder({ order, product, quantity, claimMessageId = n
   }
 
   const newQuantity = order.quantity + quantity;
-  const shippingCents = order.shipping_cents || 0;
-  const totalCents = product.price_cents * newQuantity + shippingCents;
+  const pricing = resolveTierPricing(product, newQuantity);
+  const totalCents = pricing.priceCents * newQuantity + pricing.shippingCents;
 
   getDb().prepare(`
     UPDATE orders
     SET quantity = ?,
         unit_price_cents = ?,
+        shipping_cents = ?,
         total_cents = ?,
         product_name = ?,
         claim_message_id = COALESCE(?, claim_message_id)
     WHERE id = ? AND status = 'pending'
   `).run(
     newQuantity,
-    product.price_cents,
+    pricing.priceCents,
+    pricing.shippingCents,
     totalCents,
     product.name,
     claimMessageId,
