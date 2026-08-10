@@ -1,6 +1,6 @@
 import { ActionRowBuilder, StringSelectMenuBuilder } from 'discord.js';
 import { formatAud } from '../utils/permissions.js';
-import { getProductMaxPerBuyer, listActiveProducts } from '../services/productService.js';
+import { getProductMaxPerBuyer, getProductTiers, listActiveProducts } from '../services/productService.js';
 import { CLAIM_SELECT_ID } from './customIds.js';
 
 export { CLAIM_SELECT_ID };
@@ -10,14 +10,15 @@ export function buildClaimSelectRow(products = listActiveProducts()) {
     .filter((p) => p.quantity_available > 0)
     .slice(0, 25)
     .map((p) => {
-      const ship = p.shipping_cents
-        ? ` + ${formatAud(p.shipping_cents)} ship`
-        : '';
       const limit = getProductMaxPerBuyer(p);
       const limitNote = limit ? ` · max ${limit}/person` : '';
+      const tiers = getProductTiers(p);
+      const priceNote = tiers
+        ? `From ${formatAud(tiers[tiers.length - 1].priceCents)}/ea (tiered)`
+        : `${formatAud(p.price_cents)}${p.shipping_cents ? ` + ${formatAud(p.shipping_cents)} ship` : ''}`;
       return {
         label: p.name.slice(0, 100),
-        description: `${formatAud(p.price_cents)}${ship} · ${p.quantity_available} left${limitNote}`.slice(0, 100),
+        description: `${priceNote} · ${p.quantity_available} left${limitNote}`.slice(0, 100),
         value: String(p.id),
       };
     });
