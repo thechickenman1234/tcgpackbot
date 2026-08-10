@@ -2,7 +2,7 @@ import { EmbedBuilder } from 'discord.js';
 import { config } from '../config.js';
 import { formatAud } from '../utils/permissions.js';
 import { buildClaimSelectRow } from '../ui/claimSelect.js';
-import { getProductMaxPerBuyer, listActiveProducts } from './productService.js';
+import { formatTiersForDisplay, getProductMaxPerBuyer, getProductTiers, listActiveProducts } from './productService.js';
 import { clearMeta, getMeta, setMeta } from './metaService.js';
 
 const STOCKPOST_MESSAGE_KEY = 'stockpost_message_id';
@@ -26,11 +26,17 @@ export function buildStockpostEmbed(products = listActiveProducts()) {
     .addFields(
       products.map((p) => {
         const limit = getProductMaxPerBuyer(p);
+        const tiers = getProductTiers(p);
+        const priceBlock = tiers
+          ? formatTiersForDisplay(p, formatAud)
+          : [
+              `Price: **${formatAud(p.price_cents)}**`,
+              p.shipping_cents ? `Shipping: **${formatAud(p.shipping_cents)}** (flat)` : 'Shipping: included / none',
+            ].join('\n');
         return {
           name: p.name,
           value: [
-            `Price: **${formatAud(p.price_cents)}**`,
-            p.shipping_cents ? `Shipping: **${formatAud(p.shipping_cents)}** (flat)` : 'Shipping: included / none',
+            priceBlock,
             `Available: **${p.quantity_available}**`,
             limit ? `Limit: **${limit}** per person` : null,
             p.sale_window ? `Window: ${p.sale_window}` : null,
