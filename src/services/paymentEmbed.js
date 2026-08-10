@@ -11,6 +11,16 @@ export function formatShipTo({ name, phone, shippingAddress, city, state, zip })
   ].filter(Boolean).join('\n');
 }
 
+/**
+ * PayPal charges the seller a fee (default 2.9% + $0.30). Since the buyer
+ * covers it here, this adds that surcharge on top of the base total so the
+ * seller still nets the full order amount after PayPal takes its cut.
+ */
+export function addPaypalSurcharge(totalCents) {
+  const feeCents = Math.round(totalCents * (config.paypalFeePercent / 100)) + config.paypalFeeFlatCents;
+  return totalCents + feeCents;
+}
+
 export function buildPaymentEmbed(order, shipping) {
   const deadlineUnix = Math.floor(new Date(order.payment_deadline_at).getTime() / 1000);
   const shippingCents = order.shipping_cents || 0;
@@ -24,8 +34,17 @@ export function buildPaymentEmbed(order, shipping) {
     amountFields.push({ name: 'Shipping', value: formatAud(shippingCents), inline: true });
   }
 
+  const paymentLines = [
+    `**PayID:** \`${config.payId}\` — pay **${formatAud(order.total_cents)}**`,
+  ];
+  if (config.paypalEmail) {
+    const paypalTotal = addPaypalSurcharge(order.total_cents);
+    paymentLines.push(
+      `**PayPal:** \`${config.paypalEmail}\` — pay **${formatAud(paypalTotal)}** (includes PayPal's fee, buyer covers it)`,
+    );
+  }
+
   amountFields.push(
-    { name: 'Amount owed', value: `**${formatAud(order.total_cents)}**`, inline: true },
     { name: 'Order reference', value: `\`${order.reference_code}\``, inline: true },
   );
 
@@ -34,14 +53,14 @@ export function buildPaymentEmbed(order, shipping) {
     .setColor(0x2ecc71)
     .setDescription(
       [
-        'Transfer the exact amount via PayID and **include the order reference** in the payment description.',
-        'Then post a screenshot of the transfer in this thread.',
+        'Pick **one** payment method below and transfer the exact amount shown for it.',
+        '**Include the order reference** in the payment description, then post a screenshot of the transfer in this thread.',
         '',
-        'Staff will manually confirm payment (no automatic bank matching in v1).',
+        'Staff will manually confirm payment (no automatic matching in v1).',
       ].join('\n'),
     )
     .addFields(
-      { name: 'PayID', value: `\`${config.payId}\``, inline: false },
+      { name: 'How to pay', value: paymentLines.join('\n'), inline: false },
       ...amountFields,
       {
         name: 'Payment deadline',
