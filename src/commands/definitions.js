@@ -178,4 +178,9 @@ export const commandDefinitions = [
     .setDescription('Look up an order')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addStringOption((o) => o.setName('reference').setDescription('Order reference e.g. TCG-A1B2C3').setRequired(true)),
+
+  new SlashCommandBuilder()
+    .setName('export')
+    .setDescription('Export a CSV of every paid, not-yet-exported order for bulk label printing')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 ].map((c) => c.toJSON());
