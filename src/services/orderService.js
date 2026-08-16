@@ -83,7 +83,11 @@ export function createClaimOrder({ buyerId, product, quantity, claimMessageId })
   const claimedAt = new Date();
   const referenceCode = generateOrderReference();
   const pricing = resolveTierPricing(product, quantity);
-  const totalCents = pricing.priceCents * quantity + pricing.shippingCents;
+  // Shipping isn't finalized yet — the buyer picks Standard/Express after the
+  // intake form. Provisionally use Standard so the order has a sane total
+  // if anything reads it before that choice is made.
+  const provisionalShippingCents = config.standardShippingCents;
+  const totalCents = pricing.priceCents * quantity + provisionalShippingCents;
 
   const result = getDb().prepare(`
     INSERT INTO orders (
@@ -98,7 +102,7 @@ export function createClaimOrder({ buyerId, product, quantity, claimMessageId })
     product.name,
     quantity,
     pricing.priceCents,
-    pricing.shippingCents,
+    provisionalShippingCents,
     totalCents,
     claimMessageId,
     claimedAt.toISOString(),
@@ -123,7 +127,12 @@ export function topUpPendingOrder({ order, product, quantity, claimMessageId = n
 
   const newQuantity = order.quantity + quantity;
   const pricing = resolveTierPricing(product, newQuantity);
-  const totalCents = pricing.priceCents * newQuantity + pricing.shippingCents;
+  // Keep whatever shipping method they already chose, if any — only fall
+  // back to Standard if they haven't picked one yet.
+  const shippingCents = order.shipping_method === 'express'
+    ? config.expressShippingCents
+    : config.standardShippingCents;
+  const totalCents = pricing.priceCents * newQuantity + shippingCents;
 
   getDb().prepare(`
     UPDATE orders
@@ -137,7 +146,7 @@ export function topUpPendingOrder({ order, product, quantity, claimMessageId = n
   `).run(
     newQuantity,
     pricing.priceCents,
-    pricing.shippingCents,
+    shippingCents,
     totalCents,
     product.name,
     claimMessageId,
@@ -154,6 +163,31 @@ export function topUpPendingOrder({ order, product, quantity, claimMessageId = n
 
 export function attachThread(orderId, threadId) {
   getDb().prepare('UPDATE orders SET thread_id = ? WHERE id = ?').run(threadId, orderId);
+}
+
+/**
+ * Locks in the buyer's chosen shipping method (standard/express) and
+ * recalculates the order total using the flat fee for that method —
+ * replacing whatever provisional/product-based shipping was on there before.
+ */
+export function setShippingMethod(orderId, method) {
+  if (!['standard', 'express'].includes(method)) {
+    return { ok: false, reason: 'invalid_method' };
+  }
+
+  const order = getOrderById(orderId);
+  if (!order || order.status !== 'pending') {
+    return { ok: false, reason: 'invalid_status', order };
+  }
+
+  const shippingCents = method === 'express' ? config.expressShippingCents : config.standardShippingCents;
+  const totalCents = order.unit_price_cents * order.quantity + shippingCents;
+
+  getDb().prepare(`
+    UPDATE orders SET shipping_method = ?, shipping_cents = ?, total_cents = ? WHERE id = ?
+  `).run(method, shippingCents, totalCents, orderId);
+
+  return { ok: true, order: getOrderById(orderId) };
 }
 
 export function markPaid(orderId) {
@@ -262,4 +296,21 @@ export function listPendingOrdersByBuyer(buyerId) {
     WHERE buyer_id = ? AND status = 'pending'
     ORDER BY claimed_at DESC
   `).all(buyerId);
+}
+
+/** Paid orders that haven't been included in a label export yet. */
+export function getPaidUnexportedOrders() {
+  return getDb().prepare(`
+    SELECT * FROM orders WHERE status = 'paid' AND exported_at IS NULL ORDER BY paid_at ASC
+  `).all();
+}
+
+export function markExported(orderIds) {
+  if (!orderIds.length) return;
+  const ts = nowIso();
+  const stmt = getDb().prepare('UPDATE orders SET exported_at = ? WHERE id = ?');
+  const runMany = getDb().transaction((ids) => {
+    for (const id of ids) stmt.run(ts, id);
+  });
+  runMany(orderIds);
 }
