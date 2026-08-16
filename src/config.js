@@ -29,4 +29,13 @@ export const config = {
   paymentReminderHoursBefore: Number(optional('PAYMENT_REMINDER_HOURS_BEFORE', '1')),
   archiveDaysAfterShipped: Number(optional('ARCHIVE_DAYS_AFTER_SHIPPED', '7')),
   databasePath: optional('DATABASE_PATH', './data/bot.sqlite'),
+  standardShippingCents: Math.round(Number(optional('STANDARD_SHIPPING_FEE', '5')) * 100),
+  expressShippingCents: Math.round(Number(optional('EXPRESS_SHIPPING_FEE', '10')) * 100),
+  fromName: optional('FROM_NAME', 'TCG Pack Bot'),
+  fromBusinessName: optional('FROM_BUSINESS_NAME', ''),
+  fromStreet: required('FROM_STREET'),
+  fromStreet2: optional('FROM_STREET2', ''),
+  fromCity: required('FROM_CITY'),
+  fromState: required('FROM_STATE'),
+  fromPostcode: required('FROM_POSTCODE'),
 };
