@@ -1,6 +1,7 @@
-import { EmbedBuilder } from 'discord.js';
+import { AttachmentBuilder, EmbedBuilder } from 'discord.js';
 import { config } from '../config.js';
 import { formatAud, isStaff } from '../utils/permissions.js';
+import { buildLabelExportCsv } from '../services/labelExportService.js';
 import {
   clearProductTiers,
   createProduct,
@@ -571,6 +572,29 @@ async function handleOrder(interaction) {
   await interaction.reply({ embeds: [embed], ephemeral: true });
 }
 
+async function handleExport(interaction) {
+  if (!isStaff(interaction.member)) {
+    await interaction.reply({ content: 'Staff only.', ephemeral: true });
+    return;
+  }
+
+  const result = buildLabelExportCsv();
+  if (!result) {
+    await interaction.reply({ content: 'No paid orders waiting to be exported.', ephemeral: true });
+    return;
+  }
+
+  const attachment = new AttachmentBuilder(Buffer.from(result.csv, 'utf-8'), {
+    name: `labels-${new Date().toISOString().slice(0, 10)}.csv`,
+  });
+
+  await interaction.reply({
+    content: `📦 Exported **${result.count}** order${result.count === 1 ? '' : 's'} — upload this to the label printer app. These won't be included if you run \`/export\` again.`,
+    files: [attachment],
+    ephemeral: true,
+  });
+}
+
 export async function handleSlashCommand(interaction) {
   switch (interaction.commandName) {
     case 'product':
@@ -595,6 +619,8 @@ export async function handleSlashCommand(interaction) {
       return handleAppeal(interaction);
     case 'order':
       return handleOrder(interaction);
+    case 'export':
+      return handleExport(interaction);
     default:
       await interaction.reply({ content: 'Unknown command.', ephemeral: true });
   }
