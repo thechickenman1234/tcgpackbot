@@ -13,6 +13,7 @@ import {
   handleShippingModalSubmit,
   handleUpdateShippingButton,
 } from './shippingUi.js';
+import { SHIP_METHOD_PREFIX, handleShippingMethodButton } from './shippingMethodUi.js';
 
 export async function handleInteractionCreate(interaction) {
   try {
@@ -43,6 +44,11 @@ export async function handleInteractionCreate(interaction) {
 
     if (interaction.isButton() && interaction.customId.startsWith(UPDATE_SHIPPING_BUTTON_PREFIX)) {
       await handleUpdateShippingButton(interaction);
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith(SHIP_METHOD_PREFIX)) {
+      await handleShippingMethodButton(interaction);
       return;
     }
 
