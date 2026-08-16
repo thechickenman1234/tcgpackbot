@@ -31,7 +31,8 @@ export function buildPaymentEmbed(order, shipping) {
   ];
 
   if (shippingCents > 0) {
-    amountFields.push({ name: 'Shipping', value: formatAud(shippingCents), inline: true });
+    const methodLabel = order.shipping_method === 'express' ? ' (Express)' : ' (Standard)';
+    amountFields.push({ name: 'Shipping', value: `${formatAud(shippingCents)}${methodLabel}`, inline: true });
   }
 
   const paymentLines = [
