@@ -6,7 +6,7 @@ import {
 } from 'discord.js';
 import { updateBuyerDetails } from '../services/buyerService.js';
 import { getOrderById } from '../services/orderService.js';
-import { buildPaymentEmbed } from '../services/paymentEmbed.js';
+import { buildShippingMethodRow } from './shippingMethodUi.js';
 
 export function buildIntakeModal(orderId) {
   // 5 fields max: name, phone, street, city, state+zip
@@ -132,15 +132,7 @@ export async function handleIntakeSubmit(interaction) {
   });
 
   await interaction.reply({
-    embeds: [
-      buildPaymentEmbed(order, {
-        name,
-        phone,
-        shippingAddress: address,
-        city,
-        state,
-        zip,
-      }),
-    ],
+    content: 'One more step — pick a shipping method:',
+    components: [buildShippingMethodRow(orderId)],
   });
 }
