@@ -111,6 +111,8 @@ export function initDatabase() {
   ensureColumn('products', 'pricing_tiers', 'TEXT');
   ensureColumn('orders', 'shipping_cents', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn('orders', 'reminder_sent_at', 'TEXT');
+  ensureColumn('orders', 'shipping_method', "TEXT CHECK (shipping_method IN ('standard', 'express'))");
+  ensureColumn('orders', 'exported_at', 'TEXT');
 
   return db;
 }
