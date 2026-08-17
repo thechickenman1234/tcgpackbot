@@ -578,18 +578,23 @@ async function handleExport(interaction) {
     return;
   }
 
-  const result = buildLabelExportCsv();
+  const includeAll = interaction.options.getBoolean('all') ?? false;
+  const result = buildLabelExportCsv(includeAll);
   if (!result) {
     await interaction.reply({ content: 'No paid orders waiting to be exported.', ephemeral: true });
     return;
   }
 
   const attachment = new AttachmentBuilder(Buffer.from(result.csv, 'utf-8'), {
-    name: `labels-${new Date().toISOString().slice(0, 10)}.csv`,
+    name: `labels-${new Date().toISOString().slice(0, 10)}${includeAll ? '-full' : ''}.csv`,
   });
 
+  const note = includeAll
+    ? ` This includes every paid order, even ones already exported before — watch for duplicate labels if you already printed some of these.`
+    : ` These won't be included if you run \`/export\` again.`;
+
   await interaction.reply({
-    content: `📦 Exported **${result.count}** order${result.count === 1 ? '' : 's'} — upload this to the label printer app. These won't be included if you run \`/export\` again.`,
+    content: `📦 Exported **${result.count}** order${result.count === 1 ? '' : 's'} — upload this to the label printer app.${note}`,
     files: [attachment],
     ephemeral: true,
   });
