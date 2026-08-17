@@ -19,6 +19,8 @@ function csvEscape(value) {
 function orderToRow(order) {
   const buyer = getBuyer(order.buyer_id);
   const type = order.shipping_method === 'express' ? 'EXPRESS' : 'STANDARD';
+  const contents = `${order.quantity}x ${order.product_name}`;
+  const referenceWithContents = `${order.reference_code} — ${contents}`;
 
   const fields = [
     buyer?.name || '',
@@ -36,7 +38,7 @@ function orderToRow(order) {
     config.fromState,
     config.fromPostcode,
     buyer?.phone || '',
-    order.reference_code,
+    referenceWithContents,
     type,
   ];
 
