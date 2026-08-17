@@ -1,6 +1,6 @@
 import { config } from '../config.js';
 import { getBuyer } from './buyerService.js';
-import { getPaidUnexportedOrders, markExported } from './orderService.js';
+import { getAllPaidOrders, getPaidUnexportedOrders, markExported } from './orderService.js';
 
 const CSV_HEADER = [
   'to_name', 'to_business_name', 'to_street', 'to_street2', 'to_city', 'to_state', 'to_postcode',
@@ -46,13 +46,18 @@ function orderToRow(order) {
 }
 
 /**
- * Builds a CSV of every paid-but-not-yet-exported order, ready to hand to
- * the label printer app. Returns null if there's nothing new to export.
- * Marks the included orders as exported so re-running this later only
- * picks up newly-paid orders, not duplicates.
+ * Builds a CSV of paid orders, ready to hand to the label printer app.
+ * By default, only includes orders that haven't been exported yet, and
+ * marks them exported so re-running this later only picks up newly-paid
+ * orders, not duplicates.
+ *
+ * Pass includeAlreadyExported = true to instead pull EVERY paid order,
+ * regardless of past export history — useful for re-generating a full,
+ * up-to-date CSV (e.g. after a format change like adding product/qty to
+ * the reference field) without needing to "un-export" anything first.
  */
-export function buildLabelExportCsv() {
-  const orders = getPaidUnexportedOrders();
+export function buildLabelExportCsv(includeAlreadyExported = false) {
+  const orders = includeAlreadyExported ? getAllPaidOrders() : getPaidUnexportedOrders();
   if (!orders.length) return null;
 
   const rows = [CSV_HEADER.join(','), ...orders.map(orderToRow)];
