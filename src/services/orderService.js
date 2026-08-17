@@ -305,6 +305,13 @@ export function getPaidUnexportedOrders() {
   `).all();
 }
 
+/** Every paid order, regardless of whether it's been exported before. */
+export function getAllPaidOrders() {
+  return getDb().prepare(`
+    SELECT * FROM orders WHERE status = 'paid' ORDER BY paid_at ASC
+  `).all();
+}
+
 export function markExported(orderIds) {
   if (!orderIds.length) return;
   const ts = nowIso();
