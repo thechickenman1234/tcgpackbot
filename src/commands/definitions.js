@@ -182,5 +182,11 @@ export const commandDefinitions = [
   new SlashCommandBuilder()
     .setName('export')
     .setDescription('Export a CSV of every paid, not-yet-exported order for bulk label printing')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addBooleanOption((o) =>
+      o
+        .setName('all')
+        .setDescription('Re-export EVERY paid order, including ones already exported before')
+        .setRequired(false),
+    ),
 ].map((c) => c.toJSON());
