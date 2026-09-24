@@ -428,32 +428,55 @@ async function handleTracking(interaction) {
   }
   await interaction.deferReply({ ephemeral: true });
 
-  const pairs = interaction.options.getString('pairs', true)
-    .split(/[\n,;]+/)
+  // Each line is "<who>: <tracking>". <who> is a customer name straight off
+  // the label printer, or an order reference if you'd rather be precise.
+  const entries = interaction.options.getString('pairs', true)
+    .split(/[\n;]+/)
     .map((line) => line.trim())
     .filter(Boolean)
-    .map((line) => line.split(/[\s:=]+/).filter(Boolean))
-    .filter((parts) => parts.length >= 2)
-    .map(([ref, code]) => ({ ref: ref.toUpperCase(), code }));
+    .map((line) => {
+      const m = line.match(/^(.*?)[\s:,=]+([A-Za-z0-9-]{8,})\s*$/);
+      return m ? { who: m[1].trim(), code: m[2].trim() } : null;
+    })
+    .filter(Boolean);
 
   const done = [];
   const failed = [];
-  for (const { ref, code } of pairs) {
-    const order = getOrderByReference(ref);
-    if (!order) {
-      failed.push(`${ref} — no such order`);
+
+  for (const { who, code } of entries) {
+    let orders;
+
+    if (/^TCG-[0-9A-Z]{6}$/i.test(who)) {
+      const order = getOrderByReference(who.toUpperCase());
+      orders = order ? [order] : [];
+    } else {
+      const buyers = findBuyersByName(who);
+      if (buyers.length > 1) {
+        failed.push(`${who} — ${buyers.length} buyers share that name, use the order reference`);
+        continue;
+      }
+      orders = buyers.length ? getPaidOrdersForBuyer(buyers[0].discord_id) : [];
+    }
+
+    if (!orders.length) {
+      failed.push(`${who} — nothing awaiting shipping`);
       continue;
     }
-    // Record the code either way; only flip to shipped when it is payable.
-    const updated = order.status === 'paid'
-      ? markShipped(order.id, code).order
-      : setTrackingCode(order.id, code);
-    const told = await postTrackingToThread(interaction.client, updated);
-    done.push(`${ref} — ${code}${told ? '' : ' (no thread to post in)'}`);
+
+    // One parcel can hold several orders, so they all get the same code.
+    for (const order of orders) {
+      const updated = order.status === 'paid'
+        ? markShipped(order.id, code).order
+        : setTrackingCode(order.id, code);
+      await postTrackingToThread(interaction.client, updated);
+    }
+    const what = orders.map((o) => o.reference_code).join(', ');
+    done.push(`${who} — ${code}${orders.length > 1 ? ` (${orders.length} orders: ${what})` : ''}`);
   }
 
+  const parcels = done.length;
   const lines = [
-    `📦 Tracking added to **${done.length}** order${done.length === 1 ? '' : 's'}.`,
+    `📦 Tracking sent for **${parcels}** parcel${parcels === 1 ? '' : 's'}.`,
     ...done.map((d) => `• ${d}`),
   ];
   if (failed.length) lines.push('', `⚠️ **${failed.length} skipped:**`, ...failed.map((f) => `• ${f}`));

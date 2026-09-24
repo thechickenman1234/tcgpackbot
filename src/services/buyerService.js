@@ -19,6 +19,19 @@ export function getBuyer(discordId) {
   return getDb().prepare('SELECT * FROM buyers WHERE discord_id = ?').get(discordId);
 }
 
+/**
+ * Find buyers by the shipping name, which is what a label printer prints.
+ * Case and surrounding whitespace are ignored. More than one buyer can share
+ * a name, so this returns all of them and the caller decides.
+ */
+export function findBuyersByName(name) {
+  const needle = String(name || '').trim().toLowerCase();
+  if (!needle) return [];
+  return getDb()
+    .prepare('SELECT * FROM buyers WHERE LOWER(TRIM(name)) = ?')
+    .all(needle);
+}
+
 export function isBuyerBanned(discordId) {
   const buyer = getBuyer(discordId);
   return Boolean(buyer?.is_banned);

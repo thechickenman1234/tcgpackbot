@@ -126,7 +126,7 @@ export const commandDefinitions = [
     .addStringOption((o) =>
       o
         .setName('pairs')
-        .setDescription('One per line or comma separated: TCG-ABC123 0301018247796006320999')
+        .setDescription('Paste from your label printer: Ben Broadhurst: 0301018247797006320996')
         .setRequired(true),
     ),
 

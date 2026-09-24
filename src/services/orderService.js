@@ -319,6 +319,16 @@ export function getPaidUnexportedOrders() {
   `).all();
 }
 
+/**
+ * A buyer's paid, not-yet-shipped orders. When several go in one parcel they
+ * all take the same tracking code, which is the normal case.
+ */
+export function getPaidOrdersForBuyer(buyerId) {
+  return getDb().prepare(`
+    SELECT * FROM orders WHERE buyer_id = ? AND status = 'paid' ORDER BY paid_at ASC
+  `).all(buyerId);
+}
+
 /** Every paid order, regardless of whether it's been exported before. */
 export function getAllPaidOrders() {
   return getDb().prepare(`
