@@ -25,11 +25,13 @@ import {
   cancelOrder,
   getOrderByReference,
   getOrderByThreadId,
+  getPaidOrdersForBuyer,
   markPaid,
   markShipped,
   setTrackingCode,
 } from '../services/orderService.js';
 import {
+  findBuyersByName,
   getBanHistory,
   isBuyerBanned,
   recordAppeal,
