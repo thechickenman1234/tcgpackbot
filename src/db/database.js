@@ -114,6 +114,7 @@ export function initDatabase() {
   ensureColumn('orders', 'shipping_method', "TEXT CHECK (shipping_method IN ('standard', 'express'))");
   ensureColumn('orders', 'exported_at', 'TEXT');
   ensureColumn('orders', 'tracking_code', 'TEXT');
+  ensureColumn('orders', 'combined_with', 'TEXT');
 
   return db;
 }

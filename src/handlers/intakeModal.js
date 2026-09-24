@@ -133,6 +133,6 @@ export async function handleIntakeSubmit(interaction) {
 
   await interaction.reply({
     content: 'One more step — pick a shipping method:',
-    components: [buildShippingMethodRow(orderId)],
+    components: [buildShippingMethodRow(orderId, interaction.user.id)],
   });
 }

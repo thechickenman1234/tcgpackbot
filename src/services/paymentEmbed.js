@@ -33,6 +33,12 @@ export function buildPaymentEmbed(order, shipping) {
   if (shippingCents > 0) {
     const methodLabel = order.shipping_method === 'express' ? ' (Express)' : ' (Standard)';
     amountFields.push({ name: 'Shipping', value: `${formatAud(shippingCents)}${methodLabel}`, inline: true });
+  } else if (order.combined_with) {
+    amountFields.push({
+      name: 'Shipping',
+      value: `Free — packed with \`${order.combined_with}\``,
+      inline: true,
+    });
   }
 
   const paymentLines = [

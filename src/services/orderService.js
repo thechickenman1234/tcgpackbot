@@ -161,6 +161,39 @@ export function topUpPendingOrder({ order, product, quantity, claimMessageId = n
   };
 }
 
+/**
+ * Orders this buyer has that have not gone out yet — pending or paid. These
+ * are the ones a new order can be packed alongside.
+ */
+export function getUnshippedOrdersForBuyer(buyerId, excludeOrderId = null) {
+  return getDb().prepare(`
+    SELECT * FROM orders
+    WHERE buyer_id = ?
+      AND status IN ('pending', 'paid')
+      AND id != COALESCE(?, -1)
+    ORDER BY claimed_at ASC
+  `).all(buyerId, excludeOrderId);
+}
+
+/**
+ * Ship this order inside an existing parcel: no shipping charged, and the
+ * reference of the parcel it joins is recorded so packing knows to put them
+ * in the same box.
+ */
+export function setCombinedShipping(orderId, withReference) {
+  const order = getOrderById(orderId);
+  if (!order || order.status !== 'pending') {
+    return { ok: false, reason: 'invalid_status', order };
+  }
+  const totalCents = order.unit_price_cents * order.quantity;
+  getDb().prepare(`
+    UPDATE orders
+    SET shipping_cents = 0, total_cents = ?, combined_with = ?
+    WHERE id = ?
+  `).run(totalCents, withReference, orderId);
+  return { ok: true, order: getOrderById(orderId) };
+}
+
 export function attachThread(orderId, threadId) {
   getDb().prepare('UPDATE orders SET thread_id = ? WHERE id = ?').run(threadId, orderId);
 }
