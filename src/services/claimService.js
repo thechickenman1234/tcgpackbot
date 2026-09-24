@@ -104,6 +104,45 @@ async function postTopUpUpdate(order, buyerUser, added, shippingDetails) {
 }
 
 /**
+ * A role mention does not add anyone to a private thread, so staff were never
+ * members of the tickets and had to open each one by hand from the thread
+ * list. Add everyone holding the staff role explicitly. This is best effort:
+ * a failure here must never stop a claim being created.
+ */
+const STAFF_CACHE_MS = 5 * 60 * 1000;
+let staffIdCache = { ids: [], fetchedAt: 0 };
+
+async function getStaffIds(guild) {
+  const now = Date.now();
+  if (staffIdCache.ids.length && now - staffIdCache.fetchedAt < STAFF_CACHE_MS) {
+    return staffIdCache.ids;
+  }
+  // Claim sales are bursty, so only hit the API once every few minutes.
+  const members = await guild.members.fetch();
+  const ids = members
+    .filter((member) => !member.user.bot && member.roles.cache.has(config.staffRoleId))
+    .map((member) => member.id);
+  staffIdCache = { ids, fetchedAt: now };
+  return ids;
+}
+
+async function addStaffToThread(thread, guild) {
+  if (!guild || !config.staffRoleId) return;
+  try {
+    const staffIds = await getStaffIds(guild);
+    for (const staffId of staffIds) {
+      try {
+        await thread.members.add(staffId);
+      } catch (err) {
+        console.error(`Failed to add staff ${staffId} to thread ${thread.id}:`, err);
+      }
+    }
+  } catch (err) {
+    console.error('Failed to add staff to thread:', err);
+  }
+}
+
+/**
  * Create order + private thread, or top up an existing pending claim.
  */
 export async function fulfillClaim({
@@ -162,6 +201,8 @@ export async function fulfillClaim({
   } catch (err) {
     console.error('Failed to add buyer to thread:', err);
   }
+
+  await addStaffToThread(thread, channel.guild);
 
   const details = shippingDetails ?? buyerDetailsFromRow(getBuyer(buyerUser.id));
 
