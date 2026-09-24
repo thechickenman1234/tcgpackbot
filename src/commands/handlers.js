@@ -430,7 +430,7 @@ async function handleTracking(interaction) {
 
   // Each line is "<who>: <tracking>". <who> is a customer name straight off
   // the label printer, or an order reference if you'd rather be precise.
-  const entries = interaction.options.getString('pairs', true)
+  const entries = interaction.options.getString('paste', true)
     .split(/[\n;]+/)
     .map((line) => line.trim())
     .filter(Boolean)

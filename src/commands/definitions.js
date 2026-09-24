@@ -125,7 +125,7 @@ export const commandDefinitions = [
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addStringOption((o) =>
       o
-        .setName('pairs')
+        .setName('paste')
         .setDescription('Paste from your label printer: Ben Broadhurst: 0301018247797006320996')
         .setRequired(true),
     ),
