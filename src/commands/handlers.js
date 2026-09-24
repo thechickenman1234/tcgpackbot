@@ -420,6 +420,30 @@ async function postTrackingToThread(client, order) {
 }
 
 /**
+ * Which of a buyer's unshipped orders a single tracking code should cover.
+ *
+ * A name match can turn up orders that were never going in the same box.
+ * The common case is an order that was posted weeks ago but never marked
+ * shipped here, so it still reads as awaiting a parcel — fanning a code
+ * across those messages people about deliveries they already have.
+ *
+ * So we only fan out when the buyer actually combined the orders, which
+ * records the parcel it joined in combined_with. One anchor order with
+ * everything else pointing at it is a parcel. Anything else is a guess,
+ * and returns null so the caller can ask for an explicit reference.
+ */
+function ordersInOneParcel(orders) {
+  if (orders.length <= 1) return orders;
+  const anchors = orders.filter((o) => !o.combined_with);
+  if (anchors.length !== 1) return null;
+  const anchor = anchors[0];
+  const allJoined = orders.every(
+    (o) => o.id === anchor.id || o.combined_with === anchor.reference_code,
+  );
+  return allJoined ? orders : null;
+}
+
+/**
  * Bulk tracking. Paste "REF CODE" pairs, one per line or comma separated.
  * Several orders can share a tracking code when they ship in one parcel.
  */
@@ -458,6 +482,16 @@ async function handleTracking(interaction) {
         continue;
       }
       orders = buyers.length ? getPaidOrdersForBuyer(buyers[0].discord_id) : [];
+
+      const parcel = ordersInOneParcel(orders);
+      if (!parcel) {
+        const list = orders
+          .map((o) => `\`${o.reference_code}\`${o.paid_at ? ` (${o.paid_at.slice(0, 10)})` : ''}`)
+          .join(', ');
+        failed.push(`${who} — ${orders.length} unshipped orders, never combined: ${list}. Paste the one you mean.`);
+        continue;
+      }
+      orders = parcel;
     }
 
     if (!orders.length) {
