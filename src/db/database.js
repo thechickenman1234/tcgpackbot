@@ -113,6 +113,7 @@ export function initDatabase() {
   ensureColumn('orders', 'reminder_sent_at', 'TEXT');
   ensureColumn('orders', 'shipping_method', "TEXT CHECK (shipping_method IN ('standard', 'express'))");
   ensureColumn('orders', 'exported_at', 'TEXT');
+  ensureColumn('orders', 'tracking_code', 'TEXT');
 
   return db;
 }

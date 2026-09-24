@@ -27,6 +27,7 @@ import {
   getOrderByThreadId,
   markPaid,
   markShipped,
+  setTrackingCode,
 } from '../services/orderService.js';
 import {
   getBanHistory,
@@ -379,7 +380,8 @@ async function handleShipped(interaction) {
     return;
   }
 
-  const result = markShipped(order.id);
+  const tracking = interaction.options.getString('tracking')?.trim() || null;
+  const result = markShipped(order.id, tracking);
   if (!result.ok) {
     await interaction.reply({
       content: `Cannot mark shipped (status: \`${order.status}\`). Order must be paid first.`,
@@ -388,10 +390,75 @@ async function handleShipped(interaction) {
     return;
   }
 
+  if (tracking) await postTrackingToThread(interaction.client, result.order);
+
   const archiveUnix = Math.floor(new Date(result.order.archive_at).getTime() / 1000);
   await interaction.reply({
-    content: `📦 Marked **${order.reference_code}** as **shipped**. Thread will auto-archive <t:${archiveUnix}:R>.`,
+    content: `📦 Marked **${order.reference_code}** as **shipped**`
+      + (tracking ? ` with tracking \`${tracking}\` — buyer notified.` : '.')
+      + ` Thread will auto-archive <t:${archiveUnix}:R>.`,
   });
+}
+
+/** Tell the buyer their tracking number in their own ticket. */
+async function postTrackingToThread(client, order) {
+  if (!order.thread_id || !order.tracking_code) return false;
+  try {
+    const thread = await client.channels.fetch(order.thread_id);
+    await thread.send(
+      `<@${order.buyer_id}> 📦 **${order.quantity}x ${order.product_name}** is on its way.\n`
+      + `Tracking: \`${order.tracking_code}\`\n`
+      + `Track it at https://auspost.com.au/mypost/track/search?id=${order.tracking_code}`,
+    );
+    return true;
+  } catch (err) {
+    console.error(`Failed to post tracking to thread ${order.thread_id}:`, err);
+    return false;
+  }
+}
+
+/**
+ * Bulk tracking. Paste "REF CODE" pairs, one per line or comma separated.
+ * Several orders can share a tracking code when they ship in one parcel.
+ */
+async function handleTracking(interaction) {
+  if (!isStaff(interaction.member)) {
+    await interaction.reply({ content: 'Staff only.', ephemeral: true });
+    return;
+  }
+  await interaction.deferReply({ ephemeral: true });
+
+  const pairs = interaction.options.getString('pairs', true)
+    .split(/[\n,;]+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => line.split(/[\s:=]+/).filter(Boolean))
+    .filter((parts) => parts.length >= 2)
+    .map(([ref, code]) => ({ ref: ref.toUpperCase(), code }));
+
+  const done = [];
+  const failed = [];
+  for (const { ref, code } of pairs) {
+    const order = getOrderByReference(ref);
+    if (!order) {
+      failed.push(`${ref} — no such order`);
+      continue;
+    }
+    // Record the code either way; only flip to shipped when it is payable.
+    const updated = order.status === 'paid'
+      ? markShipped(order.id, code).order
+      : setTrackingCode(order.id, code);
+    const told = await postTrackingToThread(interaction.client, updated);
+    done.push(`${ref} — ${code}${told ? '' : ' (no thread to post in)'}`);
+  }
+
+  const lines = [
+    `📦 Tracking added to **${done.length}** order${done.length === 1 ? '' : 's'}.`,
+    ...done.map((d) => `• ${d}`),
+  ];
+  if (failed.length) lines.push('', `⚠️ **${failed.length} skipped:**`, ...failed.map((f) => `• ${f}`));
+
+  await interaction.editReply({ content: lines.join('\n').slice(0, 1900) });
 }
 
 async function handleCancel(interaction) {
@@ -612,6 +679,8 @@ export async function handleSlashCommand(interaction) {
       return handlePaid(interaction);
     case 'shipped':
       return handleShipped(interaction);
+    case 'tracking':
+      return handleTracking(interaction);
     case 'cancel':
       return handleCancel(interaction);
     case 'shipping':

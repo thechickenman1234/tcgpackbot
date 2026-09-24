@@ -113,7 +113,21 @@ export const commandDefinitions = [
     .setDescription('Mark the order in this ticket as shipped')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addStringOption((o) =>
+      o.setName('tracking').setDescription('Tracking number — posted to the buyer automatically').setRequired(false),
+    )
+    .addStringOption((o) =>
       o.setName('reference').setDescription('Optional order reference if not run inside the ticket').setRequired(false),
+    ),
+
+  new SlashCommandBuilder()
+    .setName('tracking')
+    .setDescription('Add tracking to many orders at once and tell every buyer')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addStringOption((o) =>
+      o
+        .setName('pairs')
+        .setDescription('One per line or comma separated: TCG-ABC123 0301018247796006320999')
+        .setRequired(true),
     ),
 
   new SlashCommandBuilder()

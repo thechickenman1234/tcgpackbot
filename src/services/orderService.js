@@ -203,7 +203,7 @@ export function markPaid(orderId) {
   return { ok: true, order: getOrderById(orderId) };
 }
 
-export function markShipped(orderId) {
+export function markShipped(orderId, trackingCode = null) {
   const order = getOrderById(orderId);
   if (!order || order.status !== 'paid') {
     return { ok: false, reason: 'invalid_status', order };
@@ -212,15 +212,29 @@ export function markShipped(orderId) {
   const shippedAt = new Date();
   getDb().prepare(`
     UPDATE orders
-    SET status = 'shipped', shipped_at = ?, archive_at = ?
+    SET status = 'shipped',
+        shipped_at = ?,
+        archive_at = ?,
+        tracking_code = COALESCE(?, tracking_code)
     WHERE id = ?
   `).run(
     shippedAt.toISOString(),
     addDaysIso(config.archiveDaysAfterShipped, shippedAt),
+    trackingCode,
     orderId,
   );
 
   return { ok: true, order: getOrderById(orderId) };
+}
+
+/**
+ * Attach a tracking code without changing status. Used by the bulk import so
+ * a code can be recorded even when an order is not in a shippable state yet.
+ */
+export function setTrackingCode(orderId, trackingCode) {
+  getDb().prepare('UPDATE orders SET tracking_code = ? WHERE id = ?')
+    .run(trackingCode, orderId);
+  return getOrderById(orderId);
 }
 
 export function markArchived(orderId) {
