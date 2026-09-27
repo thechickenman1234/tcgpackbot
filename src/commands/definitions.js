@@ -205,6 +205,23 @@ export const commandDefinitions = [
     ),
 
   new SlashCommandBuilder()
+    .setName('shipall')
+    .setDescription('Mark every paid order as shipped except the product you name — previews first')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addStringOption((o) =>
+      o
+        .setName('except')
+        .setDescription('Leave orders alone if the product name contains this, e.g. terastal')
+        .setRequired(true),
+    )
+    .addBooleanOption((o) =>
+      o
+        .setName('confirm')
+        .setDescription('Actually do it. Leave this off to preview only.')
+        .setRequired(false),
+    ),
+
+  new SlashCommandBuilder()
     .setName('sync')
     .setDescription('Push every paid order to the accounting spreadsheet and rebuild the Labels tab')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),

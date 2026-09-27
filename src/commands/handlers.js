@@ -26,6 +26,7 @@ import {
   cancelOrder,
   getOrderByReference,
   getOrderByThreadId,
+  getAllPaidOrders,
   getPaidOrdersForBuyer,
   getSyncableOrders,
   markPaid,
@@ -750,6 +751,82 @@ async function handleSync(interaction) {
   }
 }
 
+/**
+ * Marks every paid order shipped except the ones you name.
+ *
+ * Exists because orders get posted without anyone running /shipped, so the
+ * Labels tab fills up with parcels that left weeks ago. Previewing is the
+ * default: there is no un-ship, so nothing happens until confirm is true.
+ */
+async function handleShipAll(interaction) {
+  if (!isStaff(interaction.member)) {
+    await interaction.reply({ content: 'Staff only.', ephemeral: true });
+    return;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+
+  const except = (interaction.options.getString('except') || '').trim().toLowerCase();
+  const confirm = interaction.options.getBoolean('confirm') ?? false;
+  const paid = getAllPaidOrders();
+
+  if (!paid.length) {
+    await interaction.editReply({ content: 'Nothing to do — no paid orders waiting to ship.' });
+    return;
+  }
+
+  const keep = except
+    ? paid.filter((o) => o.product_name.toLowerCase().includes(except))
+    : [];
+  const ship = paid.filter((o) => !keep.includes(o));
+
+  const summarise = (orders) => {
+    const byProduct = new Map();
+    for (const o of orders) {
+      byProduct.set(o.product_name, (byProduct.get(o.product_name) || 0) + 1);
+    }
+    return [...byProduct.entries()].map(([name, n]) => `• ${n}x ${name}`);
+  };
+
+  if (!confirm) {
+    const lines = [
+      `**Preview only — nothing has changed.**`,
+      '',
+      `Would mark **${ship.length}** order${ship.length === 1 ? '' : 's'} as shipped:`,
+      ...summarise(ship),
+      '',
+      keep.length
+        ? `Would leave **${keep.length}** alone (matched \`${except}\`):\n${summarise(keep).join('\n')}`
+        : `⚠️ Nothing matched \`${except}\` — **everything** would be marked shipped. Check the spelling.`,
+      '',
+      'Run it again with `confirm: True` to apply. There is no undo.',
+    ];
+    await interaction.editReply({ content: lines.join('\n').slice(0, 1900) });
+    return;
+  }
+
+  let done = 0;
+  const shipped = [];
+  for (const order of ship) {
+    const result = markShipped(order.id, null);
+    if (result.ok) {
+      shipped.push(result.order);
+      done += 1;
+    }
+  }
+
+  pushToSheetInBackground(shipped, 'shipall');
+
+  const lines = [
+    `📦 Marked **${done}** order${done === 1 ? '' : 's'} as shipped.`,
+    ...summarise(shipped),
+    '',
+    `Left **${keep.length}** alone. Labels tab now shows only those.`,
+    'Nothing was posted to any buyer thread.',
+  ];
+  await interaction.editReply({ content: lines.join('\n').slice(0, 1900) });
+}
+
 async function handleExport(interaction) {
   if (!isStaff(interaction.member)) {
     await interaction.reply({ content: 'Staff only.', ephemeral: true });
@@ -806,6 +883,8 @@ export async function handleSlashCommand(interaction) {
       return handleOrder(interaction);
     case 'export':
       return handleExport(interaction);
+    case 'shipall':
+      return handleShipAll(interaction);
     case 'sync':
       return handleSync(interaction);
     default:
