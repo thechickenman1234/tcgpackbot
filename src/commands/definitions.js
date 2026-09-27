@@ -211,7 +211,7 @@ export const commandDefinitions = [
     .addStringOption((o) =>
       o
         .setName('except')
-        .setDescription('Leave orders alone if the product name contains this, e.g. terastal')
+        .setDescription('Keep orders whose product matches any of these. Comma separated, e.g. terastal, 30th jp')
         .setRequired(true),
     )
     .addBooleanOption((o) =>

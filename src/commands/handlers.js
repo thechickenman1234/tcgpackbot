@@ -766,7 +766,12 @@ async function handleShipAll(interaction) {
 
   await interaction.deferReply({ ephemeral: true });
 
-  const except = (interaction.options.getString('except') || '').trim().toLowerCase();
+  // Comma separated so more than one thing can be held back in one go -
+  // a live sale and a batch that hasn't been posted yet, for instance.
+  const terms = (interaction.options.getString('except') || '')
+    .split(',')
+    .map((t) => t.trim().toLowerCase())
+    .filter(Boolean);
   const confirm = interaction.options.getBoolean('confirm') ?? false;
   const paid = getAllPaidOrders();
 
@@ -775,10 +780,12 @@ async function handleShipAll(interaction) {
     return;
   }
 
-  const keep = except
-    ? paid.filter((o) => o.product_name.toLowerCase().includes(except))
-    : [];
+  const keep = paid.filter((o) => {
+    const name = o.product_name.toLowerCase();
+    return terms.some((t) => name.includes(t));
+  });
   const ship = paid.filter((o) => !keep.includes(o));
+  const except = terms.join('`, `');
 
   const summarise = (orders) => {
     const byProduct = new Map();
@@ -798,6 +805,8 @@ async function handleShipAll(interaction) {
       keep.length
         ? `Would leave **${keep.length}** alone (matched \`${except}\`):\n${summarise(keep).join('\n')}`
         : `⚠️ Nothing matched \`${except}\` — **everything** would be marked shipped. Check the spelling.`,
+      '',
+      `Every product currently waiting:\n${summarise(paid).join('\n')}`,
       '',
       'Run it again with `confirm: True` to apply. There is no undo.',
     ];
