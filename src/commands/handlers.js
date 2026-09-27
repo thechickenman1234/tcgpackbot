@@ -746,7 +746,8 @@ async function handleSync(interaction) {
     const result = await pushToSheet(orders);
     await interaction.editReply({
       content: `📊 Synced **${result.salesRows}** order${result.salesRows === 1 ? '' : 's'} to the Sales tab.\n`
-        + `🏷️ Labels tab rebuilt with **${result.labelRows}** parcel${result.labelRows === 1 ? '' : 's'} waiting to ship.`,
+        + `🏷️ Labels tab rebuilt with **${result.labelRows}** parcel${result.labelRows === 1 ? '' : 's'} waiting to ship.\n`
+        + `📦 Products tab rebuilt with **${result.productRows ?? 0}** product${result.productRows === 1 ? '' : 's'} — check the Left column.`,
     });
   } catch (err) {
     console.error('Sheet sync failed:', err);

@@ -1,6 +1,7 @@
 import { config } from '../config.js';
 import { getBuyer } from './buyerService.js';
 import { getAllPaidOrders } from './orderService.js';
+import { listAllProducts } from './productService.js';
 
 /**
  * Pushes orders into the accounting spreadsheet.
@@ -75,6 +76,9 @@ export async function pushToSheet(orders) {
     secret: config.sheetSecret,
     orders: orders.map(salesRow),
     labels: getAllPaidOrders().map(labelRow),
+    // The bot's product list is the master spelling. Stock Purchases picks
+    // from it, so a purchase and a sale of the same thing finally match.
+    products: listAllProducts().map((p) => p.name),
   };
 
   // Apps Script answers a POST with a 302 to a one-shot result URL. Sending
