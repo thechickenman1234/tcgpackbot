@@ -77,10 +77,14 @@ export async function pushToSheet(orders) {
     labels: getAllPaidOrders().map(labelRow),
   };
 
+  // Apps Script answers a POST with a 302 to a one-shot result URL. Sending
+  // the body as text/plain keeps Google from preflighting it, which is the
+  // usual reason a POST quietly arrives as a GET and runs doGet instead.
   const response = await fetch(config.sheetUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify(payload),
+    redirect: 'follow',
   });
 
   const text = await response.text();
@@ -88,9 +92,19 @@ export async function pushToSheet(orders) {
   try {
     body = JSON.parse(text);
   } catch {
-    throw new Error(`Sheet replied with something that wasn't JSON: ${text.slice(0, 200)}`);
+    throw new Error(
+      `Sheet replied with something that wasn't JSON (${response.status}, ended at ${response.url}): ${text.slice(0, 300)}`,
+    );
   }
   if (!body.ok) throw new Error(body.error || 'Sheet rejected the push');
+
+  // doGet also answers { ok: true }, so a reply with no counts means the
+  // POST was downgraded to a GET and nothing was actually written.
+  if (typeof body.salesRows !== 'number') {
+    throw new Error(
+      `Reached doGet instead of doPost — nothing was written. Ended at ${response.url}. Reply: ${text.slice(0, 200)}`,
+    );
+  }
   return body;
 }
 
