@@ -206,18 +206,33 @@ export const commandDefinitions = [
 
   new SlashCommandBuilder()
     .setName('shipall')
-    .setDescription('Mark every paid order as shipped except the product you name — previews first')
+    .setDescription('Mark everything as shipped except the products you pick — shows a preview first')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addStringOption((o) =>
       o
-        .setName('except')
-        .setDescription('Keep orders whose product matches any of these. Comma separated, e.g. terastal, 30th jp')
-        .setRequired(true),
+        .setName('keep')
+        .setDescription('Product to leave alone — pick from the list')
+        .setRequired(true)
+        .setAutocomplete(true),
+    )
+    .addStringOption((o) =>
+      o
+        .setName('keep2')
+        .setDescription('Another product to leave alone')
+        .setRequired(false)
+        .setAutocomplete(true),
+    )
+    .addStringOption((o) =>
+      o
+        .setName('keep3')
+        .setDescription('And another')
+        .setRequired(false)
+        .setAutocomplete(true),
     )
     .addBooleanOption((o) =>
       o
         .setName('confirm')
-        .setDescription('Actually do it. Leave this off to preview only.')
+        .setDescription('Leave this OFF to preview. Turn it on to actually do it.')
         .setRequired(false),
     ),
 

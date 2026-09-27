@@ -1,4 +1,4 @@
-import { handleSlashCommand } from '../commands/handlers.js';
+import { handleAutocomplete, handleSlashCommand } from '../commands/handlers.js';
 import { handleIntakeSubmit, showIntakeModal } from './intakeModal.js';
 import {
   CLAIM_MODAL_PREFIX,
@@ -19,6 +19,13 @@ export async function handleInteractionCreate(interaction) {
   try {
     if (interaction.isChatInputCommand()) {
       await handleSlashCommand(interaction);
+      return;
+    }
+
+    // Discord gives autocomplete three seconds and no way to apologise late,
+    // so this has to come before anything slower in the chain.
+    if (interaction.isAutocomplete()) {
+      await handleAutocomplete(interaction);
       return;
     }
 

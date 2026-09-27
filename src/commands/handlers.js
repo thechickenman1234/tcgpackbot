@@ -766,11 +766,13 @@ async function handleShipAll(interaction) {
 
   await interaction.deferReply({ ephemeral: true });
 
-  // Comma separated so more than one thing can be held back in one go -
-  // a live sale and a batch that hasn't been posted yet, for instance.
-  const terms = (interaction.options.getString('except') || '')
-    .split(',')
-    .map((t) => t.trim().toLowerCase())
+  // Three slots rather than one comma-separated box, because each slot is a
+  // dropdown of products that actually have orders waiting. Picking from a
+  // list beats remembering how a product was spelled when it was created.
+  const terms = ['keep', 'keep2', 'keep3']
+    .map((name) => interaction.options.getString(name))
+    .filter(Boolean)
+    .flatMap((value) => value.split(',').map((t) => t.trim().toLowerCase()))
     .filter(Boolean);
   const confirm = interaction.options.getBoolean('confirm') ?? false;
   const paid = getAllPaidOrders();
@@ -808,7 +810,7 @@ async function handleShipAll(interaction) {
       '',
       `Every product currently waiting:\n${summarise(paid).join('\n')}`,
       '',
-      'Run it again with `confirm: True` to apply. There is no undo.',
+      'Happy with that? Run it again with **confirm: True**. There is no undo.',
     ];
     await interaction.editReply({ content: lines.join('\n').slice(0, 1900) });
     return;
@@ -834,6 +836,35 @@ async function handleShipAll(interaction) {
     'Nothing was posted to any buyer thread.',
   ];
   await interaction.editReply({ content: lines.join('\n').slice(0, 1900) });
+}
+
+/**
+ * Fills the /shipall dropdowns with products that actually have orders
+ * waiting, busiest first, so nobody has to remember exactly how a product
+ * was spelled when it was created.
+ */
+export async function handleAutocomplete(interaction) {
+  if (interaction.commandName !== 'shipall') {
+    await interaction.respond([]);
+    return;
+  }
+
+  const typed = (interaction.options.getFocused() || '').toLowerCase();
+  const waiting = new Map();
+  for (const order of getAllPaidOrders()) {
+    waiting.set(order.product_name, (waiting.get(order.product_name) || 0) + 1);
+  }
+
+  const choices = [...waiting.entries()]
+    .filter(([name]) => name.toLowerCase().includes(typed))
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 25)
+    .map(([name, count]) => ({
+      name: `${name} — ${count} waiting`.slice(0, 100),
+      value: name.slice(0, 100),
+    }));
+
+  await interaction.respond(choices);
 }
 
 async function handleExport(interaction) {
