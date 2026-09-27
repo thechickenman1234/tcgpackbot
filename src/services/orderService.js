@@ -362,6 +362,19 @@ export function getPaidOrdersForBuyer(buyerId) {
   `).all(buyerId);
 }
 
+/**
+ * Every order that belongs in the accounting sheet. Pending orders are left
+ * out because nobody has paid for them yet, and cancelled ones never
+ * happened. Archived orders stay in because the money was still real.
+ */
+export function getSyncableOrders() {
+  return getDb().prepare(`
+    SELECT * FROM orders
+    WHERE status IN ('paid', 'shipped', 'archived')
+    ORDER BY paid_at ASC
+  `).all();
+}
+
 /** Every paid order, regardless of whether it's been exported before. */
 export function getAllPaidOrders() {
   return getDb().prepare(`

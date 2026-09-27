@@ -203,4 +203,9 @@ export const commandDefinitions = [
         .setDescription('Re-export EVERY paid order, including ones already exported before')
         .setRequired(false),
     ),
+
+  new SlashCommandBuilder()
+    .setName('sync')
+    .setDescription('Push every paid order to the accounting spreadsheet and rebuild the Labels tab')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 ].map((c) => c.toJSON());

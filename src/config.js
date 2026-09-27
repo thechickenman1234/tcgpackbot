@@ -38,4 +38,8 @@ export const config = {
   fromCity: required('FROM_CITY'),
   fromState: required('FROM_STATE'),
   fromPostcode: required('FROM_POSTCODE'),
+  // Accounting spreadsheet bridge. Optional on purpose: if these are unset
+  // the bot runs exactly as before and simply doesn't sync.
+  sheetUrl: optional('SHEET_URL', ''),
+  sheetSecret: optional('SHEET_SECRET', ''),
 };

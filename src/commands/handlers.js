@@ -2,6 +2,7 @@ import { AttachmentBuilder, EmbedBuilder } from 'discord.js';
 import { config } from '../config.js';
 import { formatAud, isStaff } from '../utils/permissions.js';
 import { buildLabelExportCsv } from '../services/labelExportService.js';
+import { isSheetConfigured, pushToSheet, pushToSheetInBackground } from '../services/sheetService.js';
 import {
   clearProductTiers,
   createProduct,
@@ -26,6 +27,7 @@ import {
   getOrderByReference,
   getOrderByThreadId,
   getPaidOrdersForBuyer,
+  getSyncableOrders,
   markPaid,
   markShipped,
   setTrackingCode,
@@ -365,6 +367,8 @@ async function handlePaid(interaction) {
     return;
   }
 
+  pushToSheetInBackground([result.order], 'paid');
+
   await interaction.reply({
     content: `✅ Marked **${order.reference_code}** as **paid** (${formatAud(order.total_cents)}).`,
   });
@@ -393,6 +397,7 @@ async function handleShipped(interaction) {
   }
 
   if (tracking) await postTrackingToThread(interaction.client, result.order);
+  pushToSheetInBackground([result.order], 'shipped');
 
   const archiveUnix = Math.floor(new Date(result.order.archive_at).getTime() / 1000);
   await interaction.reply({
@@ -468,6 +473,7 @@ async function handleTracking(interaction) {
 
   const done = [];
   const failed = [];
+  const synced = [];
 
   for (const { who, code } of entries) {
     let orders;
@@ -505,10 +511,15 @@ async function handleTracking(interaction) {
         ? markShipped(order.id, code).order
         : setTrackingCode(order.id, code);
       await postTrackingToThread(interaction.client, updated);
+      synced.push(updated);
     }
     const what = orders.map((o) => o.reference_code).join(', ');
     done.push(`${who} — ${code}${orders.length > 1 ? ` (${orders.length} orders: ${what})` : ''}`);
   }
+
+  // One push for the whole paste rather than one per parcel: the Labels tab
+  // is rebuilt on every call, so batching keeps it to a single rewrite.
+  pushToSheetInBackground(synced, 'tracking');
 
   const parcels = done.length;
   const lines = [
@@ -698,6 +709,47 @@ async function handleOrder(interaction) {
   await interaction.reply({ embeds: [embed], ephemeral: true });
 }
 
+/**
+ * Pushes every paid, shipped and archived order into the sheet at once.
+ *
+ * Unlike /export this has no memory and burns nothing - run it as often as
+ * you like. Use it to backfill orders that were marked paid before the sync
+ * existed, or any time Google was down and a live push was dropped.
+ */
+async function handleSync(interaction) {
+  if (!isStaff(interaction.member)) {
+    await interaction.reply({ content: 'Staff only.', ephemeral: true });
+    return;
+  }
+
+  if (!isSheetConfigured()) {
+    await interaction.reply({
+      content: 'Sheet sync is not set up — `SHEET_URL` and `SHEET_SECRET` are missing on Railway.',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+
+  const orders = getSyncableOrders();
+  if (!orders.length) {
+    await interaction.editReply({ content: 'Nothing to sync — no paid orders yet.' });
+    return;
+  }
+
+  try {
+    const result = await pushToSheet(orders);
+    await interaction.editReply({
+      content: `📊 Synced **${result.salesRows}** order${result.salesRows === 1 ? '' : 's'} to the Sales tab.\n`
+        + `🏷️ Labels tab rebuilt with **${result.labelRows}** parcel${result.labelRows === 1 ? '' : 's'} waiting to ship.`,
+    });
+  } catch (err) {
+    console.error('Sheet sync failed:', err);
+    await interaction.editReply({ content: `Sync failed: ${err.message}` });
+  }
+}
+
 async function handleExport(interaction) {
   if (!isStaff(interaction.member)) {
     await interaction.reply({ content: 'Staff only.', ephemeral: true });
@@ -754,6 +806,8 @@ export async function handleSlashCommand(interaction) {
       return handleOrder(interaction);
     case 'export':
       return handleExport(interaction);
+    case 'sync':
+      return handleSync(interaction);
     default:
       await interaction.reply({ content: 'Unknown command.', ephemeral: true });
   }
