@@ -38,6 +38,7 @@ import {
 import {
   findBuyersByName,
   getBanHistory,
+  getBuyer,
   isBuyerBanned,
   recordAppeal,
   recordAppealOutcome,
@@ -849,9 +850,11 @@ export async function handleAutocomplete(interaction) {
   const typed = (interaction.options.getFocused() || '').toLowerCase();
 
   if (interaction.commandName === 'unship') {
+    // Buyer name first: a reference and a product are not enough to tell
+    // two orders of the same thing apart when you are picking one to undo.
     const choices = getRecentlyShippedOrders()
       .map((o) => ({
-        label: `${o.reference_code} — ${o.quantity}x ${o.product_name}`,
+        label: `${getBuyer(o.buyer_id)?.name || 'Unknown'} — ${o.quantity}x ${o.product_name} (${o.reference_code})`,
         value: o.reference_code,
       }))
       .filter((c) => c.label.toLowerCase().includes(typed))
