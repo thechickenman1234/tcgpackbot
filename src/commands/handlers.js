@@ -28,8 +28,10 @@ import {
   getOrderByThreadId,
   getAllPaidOrders,
   getPaidOrdersForBuyer,
+  getRecentlyShippedOrders,
   getSyncableOrders,
   markPaid,
+  unshipOrder,
   markShipped,
   setTrackingCode,
 } from '../services/orderService.js';
@@ -844,12 +846,26 @@ async function handleShipAll(interaction) {
  * was spelled when it was created.
  */
 export async function handleAutocomplete(interaction) {
+  const typed = (interaction.options.getFocused() || '').toLowerCase();
+
+  if (interaction.commandName === 'unship') {
+    const choices = getRecentlyShippedOrders()
+      .map((o) => ({
+        label: `${o.reference_code} — ${o.quantity}x ${o.product_name}`,
+        value: o.reference_code,
+      }))
+      .filter((c) => c.label.toLowerCase().includes(typed))
+      .slice(0, 25)
+      .map((c) => ({ name: c.label.slice(0, 100), value: c.value }));
+    await interaction.respond(choices);
+    return;
+  }
+
   if (interaction.commandName !== 'shipall') {
     await interaction.respond([]);
     return;
   }
 
-  const typed = (interaction.options.getFocused() || '').toLowerCase();
   const waiting = new Map();
   for (const order of getAllPaidOrders()) {
     waiting.set(order.product_name, (waiting.get(order.product_name) || 0) + 1);
@@ -865,6 +881,42 @@ export async function handleAutocomplete(interaction) {
     }));
 
   await interaction.respond(choices);
+}
+
+/**
+ * Puts a shipped order back to waiting. Nothing is said to the buyer - the
+ * bot never announced the order as shipped in the first place unless a
+ * tracking number went with it.
+ */
+async function handleUnship(interaction) {
+  if (!isStaff(interaction.member)) {
+    await interaction.reply({ content: 'Staff only.', ephemeral: true });
+    return;
+  }
+
+  const reference = (interaction.options.getString('reference') || '').trim().toUpperCase();
+  const order = getOrderByReference(reference);
+  if (!order) {
+    await interaction.reply({ content: `No order found with reference \`${reference}\`.`, ephemeral: true });
+    return;
+  }
+
+  const result = unshipOrder(order.id);
+  if (!result.ok) {
+    await interaction.reply({
+      content: `Can only un-ship a **shipped** order (status: \`${order.status}\`).`,
+      ephemeral: true,
+    });
+    return;
+  }
+
+  pushToSheetInBackground([result.order], 'unship');
+
+  await interaction.reply({
+    content: `↩️ **${order.reference_code}** is back to **waiting to ship** (${order.quantity}x ${order.product_name}).\n`
+      + 'It is on the Labels tab again and the 7-day auto-archive has been cancelled. Nothing was said to the buyer.',
+    ephemeral: true,
+  });
 }
 
 async function handleExport(interaction) {
@@ -925,6 +977,8 @@ export async function handleSlashCommand(interaction) {
       return handleExport(interaction);
     case 'shipall':
       return handleShipAll(interaction);
+    case 'unship':
+      return handleUnship(interaction);
     case 'sync':
       return handleSync(interaction);
     default:

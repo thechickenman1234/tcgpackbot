@@ -237,6 +237,18 @@ export const commandDefinitions = [
     ),
 
   new SlashCommandBuilder()
+    .setName('unship')
+    .setDescription('Undo a shipped mark — puts the order back on the Labels tab')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addStringOption((o) =>
+      o
+        .setName('reference')
+        .setDescription('Pick the order to put back')
+        .setRequired(true)
+        .setAutocomplete(true),
+    ),
+
+  new SlashCommandBuilder()
     .setName('sync')
     .setDescription('Push every paid order to the accounting spreadsheet and rebuild the Labels tab')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),

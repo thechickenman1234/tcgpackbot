@@ -363,6 +363,36 @@ export function getPaidOrdersForBuyer(buyerId) {
 }
 
 /**
+ * Puts a shipped order back to paid. The escape hatch for marking something
+ * shipped by mistake - especially in bulk, where one wrong pick can move
+ * dozens of orders at once.
+ *
+ * shipped_at and archive_at are cleared so the seven day auto-archive timer
+ * stops and the thread stays open. Any tracking code is kept: if it was
+ * real it is still real, and /shipped will overwrite it if it wasn't.
+ */
+export function unshipOrder(orderId) {
+  const order = getOrderById(orderId);
+  if (!order || order.status !== 'shipped') {
+    return { ok: false, reason: 'invalid_status', order };
+  }
+
+  getDb().prepare(`
+    UPDATE orders SET status = 'paid', shipped_at = NULL, archive_at = NULL WHERE id = ?
+  `).run(orderId);
+
+  return { ok: true, order: getOrderById(orderId) };
+}
+
+/** Shipped orders, most recent first — what /unship offers in its dropdown. */
+export function getRecentlyShippedOrders(limit = 50) {
+  return getDb().prepare(`
+    SELECT * FROM orders WHERE status = 'shipped'
+    ORDER BY shipped_at DESC LIMIT ?
+  `).all(limit);
+}
+
+/**
  * Every order that belongs in the accounting sheet. Pending orders are left
  * out because nobody has paid for them yet, and cancelled ones never
  * happened. Archived orders stay in because the money was still real.
