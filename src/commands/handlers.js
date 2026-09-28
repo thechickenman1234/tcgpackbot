@@ -850,6 +850,21 @@ async function handleShipAll(interaction) {
 export async function handleAutocomplete(interaction) {
   const typed = (interaction.options.getFocused() || '').toLowerCase();
 
+  if (interaction.commandName === 'shipped') {
+    // Everything still waiting, searchable by buyer name. Reading a
+    // reference off a label to type it back in is how orders get missed.
+    const choices = getAllPaidOrders()
+      .map((o) => ({
+        label: `${getBuyer(o.buyer_id)?.name || 'Unknown'} — ${o.quantity}x ${o.product_name} (${o.reference_code})`,
+        value: o.reference_code,
+      }))
+      .filter((c) => c.label.toLowerCase().includes(typed))
+      .slice(0, 25)
+      .map((c) => ({ name: c.label.slice(0, 100), value: c.value }));
+    await interaction.respond(choices);
+    return;
+  }
+
   if (interaction.commandName === 'unship') {
     // Buyer name first: a reference and a product are not enough to tell
     // two orders of the same thing apart when you are picking one to undo.

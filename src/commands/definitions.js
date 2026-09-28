@@ -116,7 +116,11 @@ export const commandDefinitions = [
       o.setName('tracking').setDescription('Tracking number — posted to the buyer automatically').setRequired(false),
     )
     .addStringOption((o) =>
-      o.setName('reference').setDescription('Optional order reference if not run inside the ticket').setRequired(false),
+      o
+        .setName('reference')
+        .setDescription('Search by buyer name if you are not in their ticket')
+        .setRequired(false)
+        .setAutocomplete(true),
     ),
 
   new SlashCommandBuilder()
