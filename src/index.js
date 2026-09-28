@@ -11,6 +11,14 @@ import { handleAppealsChannelMessage } from './handlers/appealsChannel.js';
 import { startPaymentDeadlineJob } from './jobs/paymentDeadline.js';
 import { startAutoArchiveJob } from './jobs/autoArchive.js';
 import { registerSlashCommands } from './registerCommands.js';
+import {
+  handleGuildMemberAdd,
+  handleGuildMemberRemove,
+  handleInviteCreate,
+  handleInviteDelete,
+  primeInviteCache,
+} from './services/inviteTracker.js';
+import { startGiveawayBoardJob } from './services/giveawayBoard.js';
 
 initDatabase();
 
@@ -20,6 +28,9 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.MessageContent,
+    // Needed to see invite use counts, which is the only way Discord lets
+    // you work out who invited whom.
+    GatewayIntentBits.GuildInvites,
   ],
   partials: [Partials.Channel],
 });
@@ -39,7 +50,15 @@ client.once('ready', async () => {
 
   startPaymentDeadlineJob(client);
   startAutoArchiveJob(client);
+
+  await primeInviteCache(client);
+  startGiveawayBoardJob(client);
 });
+
+client.on('inviteCreate', handleInviteCreate);
+client.on('inviteDelete', handleInviteDelete);
+client.on('guildMemberAdd', handleGuildMemberAdd);
+client.on('guildMemberRemove', handleGuildMemberRemove);
 
 client.on('messageCreate', async (message) => {
   try {

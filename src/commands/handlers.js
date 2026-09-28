@@ -4,6 +4,19 @@ import { formatAud, isStaff } from '../utils/permissions.js';
 import { buildLabelExportCsv } from '../services/labelExportService.js';
 import { isSheetConfigured, pushToSheet, pushToSheetInBackground } from '../services/sheetService.js';
 import {
+  attachBoardMessage,
+  cancelGiveaway,
+  drawWinners,
+  endGiveaway,
+  getEntryCount,
+  getLatestGiveaway,
+  getRunningGiveaway,
+  getStandings,
+  getTotals,
+  startGiveaway,
+} from '../services/giveawayService.js';
+import { buildBoardEmbed } from '../services/giveawayBoard.js';
+import {
   clearProductTiers,
   createProduct,
   findActiveProductByName,
@@ -938,6 +951,134 @@ async function handleUnship(interaction) {
   });
 }
 
+async function handleGiveaway(interaction) {
+  if (!isStaff(interaction.member)) {
+    await interaction.reply({ content: 'Staff only.', ephemeral: true });
+    return;
+  }
+
+  const sub = interaction.options.getSubcommand();
+
+  if (sub === 'start') {
+    const prize = interaction.options.getString('prize', true).trim();
+    const days = interaction.options.getInteger('days', true);
+    const winnerCount = interaction.options.getInteger('winners') ?? 1;
+    const minAccountAgeDays = interaction.options.getInteger('min_account_age') ?? 7;
+    const endsAt = new Date(Date.now() + days * 86400000).toISOString();
+
+    const result = startGiveaway({ prize, endsAt, winnerCount, minAccountAgeDays });
+    if (!result.ok) {
+      await interaction.reply({
+        content: 'A giveaway is already running. End or cancel it first with `/giveaway end`.',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const giveaway = result.giveaway;
+    const embed = buildBoardEmbed(giveaway, [], { entries: 0, people: 0 });
+    const message = await interaction.channel.send({ embeds: [embed] });
+    attachBoardMessage(giveaway.id, interaction.channel.id, message.id);
+
+    await interaction.reply({
+      content: `🎁 Giveaway started — **${prize}**, ${days} day${days === 1 ? '' : 's'}, `
+        + `**${winnerCount}** winner${winnerCount === 1 ? '' : 's'}.\n`
+        + `Invited accounts must be at least **${minAccountAgeDays}** days old to count.\n`
+        + 'The leaderboard above updates itself every 10 minutes.',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const giveaway = getRunningGiveaway() || getLatestGiveaway();
+  if (!giveaway) {
+    await interaction.reply({ content: 'No giveaway has been run yet.', ephemeral: true });
+    return;
+  }
+
+  if (sub === 'status') {
+    const standings = getStandings(giveaway.id);
+    const totals = getTotals(giveaway.id);
+    const lines = standings.slice(0, 25)
+      .map((r, i) => `${i + 1}. <@${r.inviter_id}> — ${r.entries}`);
+    await interaction.reply({
+      content: `**${giveaway.prize}** · status \`${giveaway.status}\`\n`
+        + `${totals.entries} entries from ${totals.people} people.\n\n`
+        + (lines.join('\n') || 'No entries yet.'),
+      ephemeral: true,
+    });
+    return;
+  }
+
+  if (sub === 'end') {
+    const result = endGiveaway(giveaway.id);
+    await interaction.reply({
+      content: result.ok
+        ? 'Entries are closed. Run `/giveaway draw` when you are ready to pick.'
+        : 'That giveaway is not running.',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  if (sub === 'cancel') {
+    const result = cancelGiveaway(giveaway.id);
+    await interaction.reply({
+      content: result.ok ? 'Giveaway cancelled. No winner will be drawn.' : 'It has already been drawn.',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  if (sub === 'draw') {
+    await interaction.deferReply();
+    const result = drawWinners(giveaway.id);
+    if (!result.ok) {
+      const why = {
+        no_entries: 'Nobody invited anyone, so there is nothing to draw.',
+        already_drawn: 'This giveaway has already been drawn.',
+        not_found: 'Could not find that giveaway.',
+      }[result.reason] || 'Could not draw.';
+      await interaction.editReply({ content: why });
+      return;
+    }
+
+    const totals = getTotals(giveaway.id);
+    const mentions = result.winners.map((id) => `<@${id}>`).join(' and ');
+    await interaction.editReply({
+      content: `🎉 **${giveaway.prize}**\n\nWinner: ${mentions}\n\n`
+        + `Drawn from **${totals.entries}** entries across **${totals.people}** people. `
+        + 'More invites meant more tickets in the hat.',
+      allowedMentions: { users: result.winners },
+    });
+    return;
+  }
+}
+
+/** Open to everyone: your own count, plus where you sit. */
+async function handleEntries(interaction) {
+  const giveaway = getRunningGiveaway();
+  if (!giveaway) {
+    await interaction.reply({ content: 'There is no giveaway running right now.', ephemeral: true });
+    return;
+  }
+
+  const standings = getStandings(giveaway.id);
+  const totals = getTotals(giveaway.id);
+  const mine = getEntryCount(giveaway.id, interaction.user.id);
+  const place = standings.findIndex((r) => r.inviter_id === interaction.user.id) + 1;
+
+  const yours = mine
+    ? `You have **${mine}** ${mine === 1 ? 'entry' : 'entries'}${place ? ` — currently **#${place}**` : ''}.`
+    : 'You have **no entries yet**. Invite someone and you are in.';
+
+  await interaction.reply({
+    embeds: [buildBoardEmbed(giveaway, standings, totals)],
+    content: yours,
+    ephemeral: true,
+  });
+}
+
 async function handleExport(interaction) {
   if (!isStaff(interaction.member)) {
     await interaction.reply({ content: 'Staff only.', ephemeral: true });
@@ -994,6 +1135,10 @@ export async function handleSlashCommand(interaction) {
       return handleOrder(interaction);
     case 'export':
       return handleExport(interaction);
+    case 'giveaway':
+      return handleGiveaway(interaction);
+    case 'entries':
+      return handleEntries(interaction);
     case 'shipall':
       return handleShipAll(interaction);
     case 'unship':

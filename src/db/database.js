@@ -100,6 +100,46 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_orders_deadline ON orders(payment_deadline_at);
     CREATE INDEX IF NOT EXISTS idx_orders_archive ON orders(archive_at);
     CREATE INDEX IF NOT EXISTS idx_products_slug ON products(slug);
+
+    CREATE TABLE IF NOT EXISTS giveaways (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      prize TEXT NOT NULL,
+      winner_count INTEGER NOT NULL DEFAULT 1,
+      min_account_age_days INTEGER NOT NULL DEFAULT 7,
+      started_at TEXT NOT NULL,
+      ends_at TEXT NOT NULL,
+      ended_at TEXT,
+      channel_id TEXT,
+      message_id TEXT,
+      status TEXT NOT NULL DEFAULT 'running'
+        CHECK (status IN ('running', 'ended', 'drawn', 'cancelled'))
+    );
+
+    -- One row per person who joined, not per join. The UNIQUE constraint is
+    -- what stops someone farming entries by leaving and rejoining: the same
+    -- invitee can only ever be worth one entry in one giveaway.
+    CREATE TABLE IF NOT EXISTS giveaway_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      giveaway_id INTEGER NOT NULL,
+      inviter_id TEXT NOT NULL,
+      invitee_id TEXT NOT NULL,
+      invite_code TEXT,
+      joined_at TEXT NOT NULL,
+      left_at TEXT,
+      UNIQUE (giveaway_id, invitee_id),
+      FOREIGN KEY (giveaway_id) REFERENCES giveaways(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS giveaway_winners (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      giveaway_id INTEGER NOT NULL,
+      user_id TEXT NOT NULL,
+      drawn_at TEXT NOT NULL,
+      FOREIGN KEY (giveaway_id) REFERENCES giveaways(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_entries_giveaway ON giveaway_entries(giveaway_id);
+    CREATE INDEX IF NOT EXISTS idx_entries_inviter ON giveaway_entries(giveaway_id, inviter_id);
   `);
 
   // Migrations for existing DBs created before these columns existed

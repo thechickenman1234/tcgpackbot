@@ -253,6 +253,51 @@ export const commandDefinitions = [
     ),
 
   new SlashCommandBuilder()
+    .setName('giveaway')
+    .setDescription('Run an invite giveaway')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addSubcommand((s) =>
+      s
+        .setName('start')
+        .setDescription('Start a giveaway and post the leaderboard here')
+        .addStringOption((o) =>
+          o.setName('prize').setDescription('What they win, e.g. 1x Mega Dream booster box').setRequired(true),
+        )
+        .addIntegerOption((o) =>
+          o
+            .setName('days')
+            .setDescription('How many days it runs for')
+            .setRequired(true)
+            .setMinValue(1)
+            .setMaxValue(90),
+        )
+        .addIntegerOption((o) =>
+          o
+            .setName('winners')
+            .setDescription('How many winners (default 1)')
+            .setRequired(false)
+            .setMinValue(1)
+            .setMaxValue(20),
+        )
+        .addIntegerOption((o) =>
+          o
+            .setName('min_account_age')
+            .setDescription('Invited accounts must be this many days old (default 7)')
+            .setRequired(false)
+            .setMinValue(0)
+            .setMaxValue(365),
+        ),
+    )
+    .addSubcommand((s) => s.setName('draw').setDescription('Pick the winner and announce it'))
+    .addSubcommand((s) => s.setName('end').setDescription('Stop entries without drawing yet'))
+    .addSubcommand((s) => s.setName('cancel').setDescription('Call the whole thing off — no winner'))
+    .addSubcommand((s) => s.setName('status').setDescription('Full standings, staff only')),
+
+  new SlashCommandBuilder()
+    .setName('entries')
+    .setDescription('See your giveaway entries and the leaderboard'),
+
+  new SlashCommandBuilder()
     .setName('sync')
     .setDescription('Push every paid order to the accounting spreadsheet and rebuild the Labels tab')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
