@@ -36,27 +36,53 @@ function salesRow(order) {
   };
 }
 
-function labelRow(order) {
-  const buyer = getBuyer(order.buyer_id);
-  return {
-    to_name: buyer?.name || '',
-    to_business_name: '',
-    to_street: buyer?.shipping_address || '',
-    to_street2: '',
-    to_city: buyer?.city || '',
-    to_state: buyer?.state || '',
-    to_postcode: buyer?.zip || '',
-    from_name: config.fromName,
-    from_business_name: config.fromBusinessName,
-    from_street: config.fromStreet,
-    from_street2: config.fromStreet2,
-    from_city: config.fromCity,
-    from_state: config.fromState,
-    from_postcode: config.fromPostcode,
-    phone: buyer?.phone || '',
-    reference: `${order.reference_code} — ${order.quantity}x ${order.product_name}`,
-    type: order.shipping_method === 'express' ? 'EXPRESS' : 'STANDARD',
-  };
+/**
+ * One label per buyer, not one per order.
+ *
+ * Somebody who claims twice in the same sale gets two orders but only ever
+ * one parcel, and printing both means paying for a label that never gets
+ * used. Every order a buyer has waiting goes onto a single label, with the
+ * contents listed so packing still knows what belongs in the box.
+ *
+ * Express wins for the whole parcel: if any order in it was paid as
+ * express, the parcel goes express rather than downgrading what someone
+ * paid extra for.
+ */
+function labelRowsByBuyer(orders) {
+  const byBuyer = new Map();
+  for (const order of orders) {
+    const existing = byBuyer.get(order.buyer_id);
+    if (existing) existing.push(order);
+    else byBuyer.set(order.buyer_id, [order]);
+  }
+
+  return [...byBuyer.values()].map((group) => {
+    const buyer = getBuyer(group[0].buyer_id);
+    const contents = group.map((o) => `${o.quantity}x ${o.product_name}`).join(' + ');
+    const reference = group.length === 1
+      ? `${group[0].reference_code} — ${contents}`
+      : `COMBO ${group.map((o) => o.reference_code).join('+')} — ${contents}`;
+
+    return {
+      to_name: buyer?.name || '',
+      to_business_name: '',
+      to_street: buyer?.shipping_address || '',
+      to_street2: '',
+      to_city: buyer?.city || '',
+      to_state: buyer?.state || '',
+      to_postcode: buyer?.zip || '',
+      from_name: config.fromName,
+      from_business_name: config.fromBusinessName,
+      from_street: config.fromStreet,
+      from_street2: config.fromStreet2,
+      from_city: config.fromCity,
+      from_state: config.fromState,
+      from_postcode: config.fromPostcode,
+      phone: buyer?.phone || '',
+      reference,
+      type: group.some((o) => o.shipping_method === 'express') ? 'EXPRESS' : 'STANDARD',
+    };
+  });
 }
 
 export function isSheetConfigured() {
@@ -75,7 +101,7 @@ export async function pushToSheet(orders) {
   const payload = {
     secret: config.sheetSecret,
     orders: orders.map(salesRow),
-    labels: getAllPaidOrders().map(labelRow),
+    labels: labelRowsByBuyer(getAllPaidOrders()),
     // The bot's product list is the master spelling. Stock Purchases picks
     // from it, so a purchase and a sale of the same thing finally match.
     products: listAllProducts().map((p) => p.name),
