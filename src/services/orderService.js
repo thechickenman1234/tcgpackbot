@@ -390,30 +390,34 @@ export function unshipOrder(orderId) {
  * still someone expecting a box, and buying one spare is cheaper than
  * telling somebody the sale is off.
  */
-export function getClaimedTotals() {
+export function getClaimedTotals(sinceIso = null) {
   return getDb().prepare(`
     SELECT
       product_name,
       SUM(CASE WHEN status = 'pending' THEN quantity ELSE 0 END) AS pending,
       SUM(CASE WHEN status = 'paid'    THEN quantity ELSE 0 END) AS paid,
       SUM(quantity) AS total,
-      COUNT(DISTINCT buyer_id) AS buyers
+      COUNT(DISTINCT buyer_id) AS buyers,
+      MIN(claimed_at) AS oldest,
+      MAX(claimed_at) AS newest
     FROM orders
     WHERE status IN ('pending', 'paid')
+      AND (? IS NULL OR claimed_at >= ?)
     GROUP BY product_name
     ORDER BY total DESC
-  `).all();
+  `).all(sinceIso, sinceIso);
 }
 
 /** Per-buyer breakdown for one product, unpaid first so chasing is easy. */
-export function getClaimsForProduct(productName) {
+export function getClaimsForProduct(productName, sinceIso = null) {
   return getDb().prepare(`
-    SELECT buyer_id, product_name, status, SUM(quantity) AS quantity
+    SELECT buyer_id, product_name, status, SUM(quantity) AS quantity, MIN(claimed_at) AS claimed_at
     FROM orders
     WHERE status IN ('pending', 'paid') AND LOWER(product_name) = LOWER(?)
+      AND (? IS NULL OR claimed_at >= ?)
     GROUP BY buyer_id, status
     ORDER BY status ASC, quantity DESC
-  `).all(productName);
+  `).all(productName, sinceIso, sinceIso);
 }
 
 /** Shipped orders, most recent first — what /unship offers in its dropdown. */

@@ -250,6 +250,18 @@ export const commandDefinitions = [
         .setDescription('Break one product down buyer by buyer')
         .setRequired(false)
         .setAutocomplete(true),
+    )
+    .addIntegerOption((o) =>
+      o
+        .setName('since')
+        .setDescription('Only count recent claims — use this to price one sale')
+        .setRequired(false)
+        .addChoices(
+          { name: 'Last 12 hours', value: 12 },
+          { name: 'Last 24 hours', value: 24 },
+          { name: 'Last 3 days', value: 72 },
+          { name: 'Last 7 days', value: 168 },
+        ),
     ),
 
   new SlashCommandBuilder()

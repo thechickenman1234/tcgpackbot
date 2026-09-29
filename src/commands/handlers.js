@@ -1111,8 +1111,15 @@ async function handleClaimed(interaction) {
   await interaction.deferReply({ ephemeral: true });
   const wanted = interaction.options.getString('product');
 
+  // Hours rather than calendar days on purpose: the bot runs on UTC and a
+  // sale that starts at 8pm Melbourne is already tomorrow there, so
+  // "today" would quietly mean the wrong thing.
+  const hours = interaction.options.getInteger('since');
+  const sinceIso = hours ? new Date(Date.now() - hours * 3600000).toISOString() : null;
+  const window = hours ? ` claimed in the last **${hours < 24 ? `${hours}h` : `${hours / 24} days`}**` : '';
+
   if (wanted) {
-    const rows = getClaimsForProduct(wanted);
+    const rows = getClaimsForProduct(wanted, sinceIso);
     if (!rows.length) {
       await interaction.editReply({ content: `Nothing claimed for \`${wanted}\`.` });
       return;
@@ -1124,16 +1131,18 @@ async function handleClaimed(interaction) {
       return `${r.status === 'pending' ? '⏳' : '✅'} ${name} — **${r.quantity}**`;
     });
     await interaction.editReply({
-      content: `**${rows[0].product_name}** — order **${total}**\n`
+      content: `**${rows[0].product_name}** — order **${total}**${window}\n`
         + `${unpaid.length} buyer${unpaid.length === 1 ? '' : 's'} still to pay.\n\n`
         + lines.join('\n').slice(0, 1700),
     });
     return;
   }
 
-  const totals = getClaimedTotals();
+  const totals = getClaimedTotals(sinceIso);
   if (!totals.length) {
-    await interaction.editReply({ content: 'Nothing claimed at the moment.' });
+    await interaction.editReply({
+      content: hours ? `Nothing claimed in the last ${hours} hours.` : 'Nothing claimed at the moment.',
+    });
     return;
   }
 
@@ -1143,9 +1152,21 @@ async function handleClaimed(interaction) {
   ));
   const grand = totals.reduce((n, t) => n + t.total, 0);
 
+  // Anything old in here is almost always an order that was posted but
+  // never marked shipped, so say how old the oldest one is rather than
+  // letting it quietly inflate a supplier order.
+  const oldest = totals.map((t) => t.oldest).filter(Boolean).sort()[0];
+  const ageDays = oldest ? (Date.now() - new Date(oldest).getTime()) / 86400000 : 0;
+  const warning = !hours && ageDays > 2
+    ? `\n\n⚠️ The oldest claim here is **${Math.floor(ageDays)} days** old. `
+      + 'If that batch has already been posted, mark it shipped or it inflates this total. '
+      + 'Use `since` to count one sale only.'
+    : '';
+
   await interaction.editReply({
-    content: `📋 **To order from the supplier**\n\n${lines.join('\n')}\n\n`
-      + `**${grand}** boxes in total. Pending claims are included — a spare box is cheaper than cancelling on someone.`,
+    content: `📋 **To order from the supplier**${window}\n\n${lines.join('\n')}\n\n`
+      + `**${grand}** boxes in total. Pending claims are included — a spare box is cheaper than cancelling on someone.`
+      + warning,
   });
 }
 
