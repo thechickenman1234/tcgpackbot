@@ -241,6 +241,18 @@ export const commandDefinitions = [
     ),
 
   new SlashCommandBuilder()
+    .setName('claimed')
+    .setDescription('How many of each product to order — includes claims that have not been paid yet')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addStringOption((o) =>
+      o
+        .setName('product')
+        .setDescription('Break one product down buyer by buyer')
+        .setRequired(false)
+        .setAutocomplete(true),
+    ),
+
+  new SlashCommandBuilder()
     .setName('unship')
     .setDescription('Undo a shipped mark — puts the order back on the Labels tab')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)

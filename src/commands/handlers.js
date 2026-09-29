@@ -40,6 +40,8 @@ import {
   getOrderByReference,
   getOrderByThreadId,
   getAllPaidOrders,
+  getClaimedTotals,
+  getClaimsForProduct,
   getPaidOrdersForBuyer,
   getRecentlyShippedOrders,
   getSyncableOrders,
@@ -863,6 +865,18 @@ async function handleShipAll(interaction) {
 export async function handleAutocomplete(interaction) {
   const typed = (interaction.options.getFocused() || '').toLowerCase();
 
+  if (interaction.commandName === 'claimed') {
+    const choices = getClaimedTotals()
+      .filter((t) => t.product_name.toLowerCase().includes(typed))
+      .slice(0, 25)
+      .map((t) => ({
+        name: `${t.product_name} — ${t.total} claimed`.slice(0, 100),
+        value: t.product_name.slice(0, 100),
+      }));
+    await interaction.respond(choices);
+    return;
+  }
+
   if (interaction.commandName === 'shipped') {
     // Everything still waiting, searchable by buyer name. Reading a
     // reference off a label to type it back in is how orders get missed.
@@ -1079,6 +1093,62 @@ async function handleEntries(interaction) {
   });
 }
 
+/**
+ * What to order from the supplier.
+ *
+ * Counts pending claims as well as paid ones. Somebody who claimed an hour
+ * ago and has not paid yet is still expecting a box, and a spare box costs
+ * far less than telling a buyer the sale is off. Reading it from the bot
+ * rather than scrolling the channel also means corrected and re-posted
+ * claims are already resolved - the order is the truth, not the message.
+ */
+async function handleClaimed(interaction) {
+  if (!isStaff(interaction.member)) {
+    await interaction.reply({ content: 'Staff only.', ephemeral: true });
+    return;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+  const wanted = interaction.options.getString('product');
+
+  if (wanted) {
+    const rows = getClaimsForProduct(wanted);
+    if (!rows.length) {
+      await interaction.editReply({ content: `Nothing claimed for \`${wanted}\`.` });
+      return;
+    }
+    const total = rows.reduce((n, r) => n + r.quantity, 0);
+    const unpaid = rows.filter((r) => r.status === 'pending');
+    const lines = rows.map((r) => {
+      const name = getBuyer(r.buyer_id)?.name || `<@${r.buyer_id}>`;
+      return `${r.status === 'pending' ? '⏳' : '✅'} ${name} — **${r.quantity}**`;
+    });
+    await interaction.editReply({
+      content: `**${rows[0].product_name}** — order **${total}**\n`
+        + `${unpaid.length} buyer${unpaid.length === 1 ? '' : 's'} still to pay.\n\n`
+        + lines.join('\n').slice(0, 1700),
+    });
+    return;
+  }
+
+  const totals = getClaimedTotals();
+  if (!totals.length) {
+    await interaction.editReply({ content: 'Nothing claimed at the moment.' });
+    return;
+  }
+
+  const lines = totals.map((t) => (
+    `**${t.product_name}** — order **${t.total}**`
+    + `  _(${t.paid} paid, ${t.pending} awaiting payment, ${t.buyers} buyers)_`
+  ));
+  const grand = totals.reduce((n, t) => n + t.total, 0);
+
+  await interaction.editReply({
+    content: `📋 **To order from the supplier**\n\n${lines.join('\n')}\n\n`
+      + `**${grand}** boxes in total. Pending claims are included — a spare box is cheaper than cancelling on someone.`,
+  });
+}
+
 async function handleExport(interaction) {
   if (!isStaff(interaction.member)) {
     await interaction.reply({ content: 'Staff only.', ephemeral: true });
@@ -1135,6 +1205,8 @@ export async function handleSlashCommand(interaction) {
       return handleOrder(interaction);
     case 'export':
       return handleExport(interaction);
+    case 'claimed':
+      return handleClaimed(interaction);
     case 'giveaway':
       return handleGiveaway(interaction);
     case 'entries':

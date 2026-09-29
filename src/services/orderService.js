@@ -384,6 +384,38 @@ export function unshipOrder(orderId) {
   return { ok: true, order: getOrderById(orderId) };
 }
 
+/**
+ * Everything claimed but not yet posted, whether it has been paid for or
+ * not. This is the number to order from the supplier: a pending claim is
+ * still someone expecting a box, and buying one spare is cheaper than
+ * telling somebody the sale is off.
+ */
+export function getClaimedTotals() {
+  return getDb().prepare(`
+    SELECT
+      product_name,
+      SUM(CASE WHEN status = 'pending' THEN quantity ELSE 0 END) AS pending,
+      SUM(CASE WHEN status = 'paid'    THEN quantity ELSE 0 END) AS paid,
+      SUM(quantity) AS total,
+      COUNT(DISTINCT buyer_id) AS buyers
+    FROM orders
+    WHERE status IN ('pending', 'paid')
+    GROUP BY product_name
+    ORDER BY total DESC
+  `).all();
+}
+
+/** Per-buyer breakdown for one product, unpaid first so chasing is easy. */
+export function getClaimsForProduct(productName) {
+  return getDb().prepare(`
+    SELECT buyer_id, product_name, status, SUM(quantity) AS quantity
+    FROM orders
+    WHERE status IN ('pending', 'paid') AND LOWER(product_name) = LOWER(?)
+    GROUP BY buyer_id, status
+    ORDER BY status ASC, quantity DESC
+  `).all(productName);
+}
+
 /** Shipped orders, most recent first — what /unship offers in its dropdown. */
 export function getRecentlyShippedOrders(limit = 50) {
   return getDb().prepare(`
