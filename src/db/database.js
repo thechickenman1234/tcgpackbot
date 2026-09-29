@@ -138,6 +138,21 @@ export function initDatabase() {
       FOREIGN KEY (giveaway_id) REFERENCES giveaways(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS scheduled_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      channel_id TEXT NOT NULL,
+      content TEXT NOT NULL,
+      send_at TEXT NOT NULL,
+      repeat_every TEXT CHECK (repeat_every IN ('daily', 'weekly')),
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      last_sent_at TEXT,
+      last_error TEXT,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'sent', 'cancelled', 'failed'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_scheduled_due ON scheduled_messages(status, send_at);
     CREATE INDEX IF NOT EXISTS idx_entries_giveaway ON giveaway_entries(giveaway_id);
     CREATE INDEX IF NOT EXISTS idx_entries_inviter ON giveaway_entries(giveaway_id, inviter_id);
   `);

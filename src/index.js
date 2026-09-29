@@ -19,6 +19,7 @@ import {
   primeInviteCache,
 } from './services/inviteTracker.js';
 import { startGiveawayBoardJob } from './services/giveawayBoard.js';
+import { startScheduledMessagesJob } from './jobs/scheduledMessages.js';
 
 initDatabase();
 
@@ -53,6 +54,7 @@ client.once('ready', async () => {
 
   await primeInviteCache(client);
   startGiveawayBoardJob(client);
+  startScheduledMessagesJob(client);
 });
 
 client.on('inviteCreate', handleInviteCreate);

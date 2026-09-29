@@ -241,6 +241,50 @@ export const commandDefinitions = [
     ),
 
   new SlashCommandBuilder()
+    .setName('schedule')
+    .setDescription('Post a message at a set date and time — Melbourne time')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addStringOption((o) =>
+      o
+        .setName('message')
+        .setDescription('What to post. @everyone works.')
+        .setRequired(true)
+        .setMaxLength(1900),
+    )
+    .addStringOption((o) =>
+      o.setName('date').setDescription('Pick a date').setRequired(true).setAutocomplete(true),
+    )
+    .addStringOption((o) =>
+      o.setName('time').setDescription('Pick a time').setRequired(true).setAutocomplete(true),
+    )
+    .addChannelOption((o) =>
+      o.setName('channel').setDescription('Where to post it (default: this channel)').setRequired(false),
+    )
+    .addStringOption((o) =>
+      o
+        .setName('repeat')
+        .setDescription('Send it again on a schedule')
+        .setRequired(false)
+        .addChoices(
+          { name: 'Every day', value: 'daily' },
+          { name: 'Every week', value: 'weekly' },
+        ),
+    ),
+
+  new SlashCommandBuilder()
+    .setName('scheduled')
+    .setDescription('See everything queued to post')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+
+  new SlashCommandBuilder()
+    .setName('unschedule')
+    .setDescription('Cancel a scheduled message')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addStringOption((o) =>
+      o.setName('message').setDescription('Pick the one to cancel').setRequired(true).setAutocomplete(true),
+    ),
+
+  new SlashCommandBuilder()
     .setName('claimed')
     .setDescription('How many of each product to order — includes claims that have not been paid yet')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)

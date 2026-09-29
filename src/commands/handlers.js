@@ -17,6 +17,14 @@ import {
 } from '../services/giveawayService.js';
 import { buildBoardEmbed } from '../services/giveawayBoard.js';
 import {
+  ZONE,
+  cancelScheduled,
+  formatMelbourne,
+  listPending,
+  melbourneToUtc,
+  scheduleMessage,
+} from '../services/scheduleService.js';
+import {
   clearProductTiers,
   createProduct,
   findActiveProductByName,
@@ -865,6 +873,62 @@ async function handleShipAll(interaction) {
 export async function handleAutocomplete(interaction) {
   const typed = (interaction.options.getFocused() || '').toLowerCase();
 
+  if (interaction.commandName === 'schedule') {
+    const focused = interaction.options.getFocused(true);
+
+    if (focused.name === 'date') {
+      // Discord has no date picker, so the next two months become a
+      // dropdown. Typing filters it, which is close enough to a calendar.
+      const choices = [];
+      for (let i = 0; i < 60 && choices.length < 25; i += 1) {
+        const day = new Date(Date.now() + i * 86400000);
+        const label = new Intl.DateTimeFormat('en-AU', {
+          timeZone: ZONE, weekday: 'short', day: 'numeric', month: 'short',
+        }).format(day);
+        const value = new Intl.DateTimeFormat('en-CA', {
+          timeZone: ZONE, year: 'numeric', month: '2-digit', day: '2-digit',
+        }).format(day);
+        const pretty = i === 0 ? `${label} (today)` : i === 1 ? `${label} (tomorrow)` : label;
+        if (pretty.toLowerCase().includes(typed) || value.includes(typed)) {
+          choices.push({ name: pretty, value });
+        }
+      }
+      await interaction.respond(choices);
+      return;
+    }
+
+    if (focused.name === 'time') {
+      const choices = [];
+      for (let h = 0; h < 24 && choices.length < 25; h += 1) {
+        for (const m of [0, 30]) {
+          const value = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+          const hour12 = h % 12 === 0 ? 12 : h % 12;
+          const label = `${hour12}:${String(m).padStart(2, '0')} ${h < 12 ? 'am' : 'pm'}`;
+          if (label.replace(/[:\s]/g, '').includes(typed.replace(/[:\s]/g, '')) || value.includes(typed)) {
+            if (choices.length < 25) choices.push({ name: label, value });
+          }
+        }
+      }
+      await interaction.respond(choices);
+      return;
+    }
+
+    await interaction.respond([]);
+    return;
+  }
+
+  if (interaction.commandName === 'unschedule') {
+    const choices = listPending()
+      .map((r) => ({
+        name: `${formatMelbourne(r.send_at)} — ${r.content.replace(/\s+/g, ' ').slice(0, 55)}`.slice(0, 100),
+        value: String(r.id),
+      }))
+      .filter((c) => c.name.toLowerCase().includes(typed))
+      .slice(0, 25);
+    await interaction.respond(choices);
+    return;
+  }
+
   if (interaction.commandName === 'claimed') {
     const choices = getClaimedTotals()
       .filter((t) => t.product_name.toLowerCase().includes(typed))
@@ -1102,6 +1166,101 @@ async function handleEntries(interaction) {
  * rather than scrolling the channel also means corrected and re-posted
  * claims are already resolved - the order is the truth, not the message.
  */
+async function handleSchedule(interaction) {
+  if (!isStaff(interaction.member)) {
+    await interaction.reply({ content: 'Staff only.', ephemeral: true });
+    return;
+  }
+
+  const content = interaction.options.getString('message', true);
+  const date = interaction.options.getString('date', true);
+  const time = interaction.options.getString('time', true);
+  const channel = interaction.options.getChannel('channel') || interaction.channel;
+  const repeat = interaction.options.getString('repeat');
+
+  const when = melbourneToUtc(date, time);
+  if (!when || Number.isNaN(when.getTime())) {
+    await interaction.reply({
+      content: 'Could not read that date and time. Pick both from the dropdowns.',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  if (when.getTime() <= Date.now()) {
+    await interaction.reply({
+      content: `${formatMelbourne(when.toISOString())} is in the past. Pick a later time.`,
+      ephemeral: true,
+    });
+    return;
+  }
+
+  if (!channel.isTextBased?.()) {
+    await interaction.reply({ content: 'Pick a text channel.', ephemeral: true });
+    return;
+  }
+
+  const row = scheduleMessage({
+    channelId: channel.id,
+    content,
+    sendAt: when.toISOString(),
+    repeatEvery: repeat,
+    createdBy: interaction.user.id,
+  });
+
+  const unix = Math.floor(when.getTime() / 1000);
+  const pings = /@everyone|@here/.test(content);
+
+  await interaction.reply({
+    content: `🕒 Scheduled for **${formatMelbourne(row.send_at)}** (<t:${unix}:R>) in ${channel}.\n`
+      + (repeat ? `Repeats **${repeat === 'daily' ? 'every day' : 'every week'}** at that time.\n` : '')
+      + (pings ? '⚠️ This pings the server. The bot needs **Mention Everyone** in that channel.\n' : '')
+      + `\n> ${content.replace(/\n/g, '\n> ').slice(0, 600)}`,
+    ephemeral: true,
+  });
+}
+
+async function handleScheduled(interaction) {
+  if (!isStaff(interaction.member)) {
+    await interaction.reply({ content: 'Staff only.', ephemeral: true });
+    return;
+  }
+
+  const rows = listPending();
+  if (!rows.length) {
+    await interaction.reply({ content: 'Nothing queued.', ephemeral: true });
+    return;
+  }
+
+  const lines = rows.slice(0, 20).map((r) => {
+    const unix = Math.floor(new Date(r.send_at).getTime() / 1000);
+    const repeat = r.repeat_every ? ` · repeats ${r.repeat_every}` : '';
+    return `**${formatMelbourne(r.send_at)}** (<t:${unix}:R>) in <#${r.channel_id}>${repeat}\n`
+      + `> ${r.content.replace(/\s+/g, ' ').slice(0, 90)}`;
+  });
+
+  await interaction.reply({
+    content: `🕒 **${rows.length} queued**\n\n${lines.join('\n\n')}`.slice(0, 1900),
+    ephemeral: true,
+  });
+}
+
+async function handleUnschedule(interaction) {
+  if (!isStaff(interaction.member)) {
+    await interaction.reply({ content: 'Staff only.', ephemeral: true });
+    return;
+  }
+
+  const id = Number(interaction.options.getString('message', true));
+  const result = cancelScheduled(id);
+  await interaction.reply({
+    content: result.ok
+      ? `Cancelled the message set for **${formatMelbourne(result.row.send_at)}**.`
+      : 'That one has already been sent or cancelled.',
+    ephemeral: true,
+  });
+}
+
 async function handleClaimed(interaction) {
   if (!isStaff(interaction.member)) {
     await interaction.reply({ content: 'Staff only.', ephemeral: true });
@@ -1226,6 +1385,12 @@ export async function handleSlashCommand(interaction) {
       return handleOrder(interaction);
     case 'export':
       return handleExport(interaction);
+    case 'schedule':
+      return handleSchedule(interaction);
+    case 'scheduled':
+      return handleScheduled(interaction);
+    case 'unschedule':
+      return handleUnschedule(interaction);
     case 'claimed':
       return handleClaimed(interaction);
     case 'giveaway':
