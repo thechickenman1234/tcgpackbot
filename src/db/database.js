@@ -172,6 +172,13 @@ export function initDatabase() {
   ensureColumn('orders', 'tracking_code', 'TEXT');
   ensureColumn('orders', 'combined_with', 'TEXT');
   ensureColumn('scheduled_messages', 'attachments', 'TEXT');
+  // Where an order came from. Claim sales stay the default so every
+  // existing row keeps meaning what it already meant.
+  ensureColumn('orders', 'source', "TEXT NOT NULL DEFAULT 'claim'");
+  // A grace window after a sale ends, priced higher so waiting to see what
+  // is left is never the cheaper move.
+  ensureColumn('products', 'late_until', 'TEXT');
+  ensureColumn('products', 'late_markup_percent', 'INTEGER NOT NULL DEFAULT 0');
 
   return db;
 }

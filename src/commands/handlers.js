@@ -16,6 +16,7 @@ import {
   startGiveaway,
 } from '../services/giveawayService.js';
 import { buildBoardEmbed } from '../services/giveawayBoard.js';
+import { getTotalsBySource, logManualOrder } from '../services/manualOrderService.js';
 import {
   ZONE,
   cancelScheduled,
@@ -876,6 +877,18 @@ async function handleShipAll(interaction) {
 export async function handleAutocomplete(interaction) {
   const typed = (interaction.options.getFocused() || '').toLowerCase();
 
+  if (interaction.commandName === 'logsale') {
+    const choices = listAllProducts()
+      .filter((p) => p.name.toLowerCase().includes(typed))
+      .slice(0, 25)
+      .map((p) => ({
+        name: `${p.name}${p.active ? '' : ' (inactive)'}`.slice(0, 100),
+        value: p.name.slice(0, 100),
+      }));
+    await interaction.respond(choices);
+    return;
+  }
+
   if (interaction.commandName === 'schedule') {
     const focused = interaction.options.getFocused(true);
 
@@ -1169,6 +1182,96 @@ async function handleEntries(interaction) {
  * rather than scrolling the channel also means corrected and re-posted
  * claims are already resolved - the order is the truth, not the message.
  */
+async function handleLogSale(interaction) {
+  if (!isStaff(interaction.member)) {
+    await interaction.reply({ content: 'Staff only.', ephemeral: true });
+    return;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+
+  const productName = interaction.options.getString('product', true);
+  const product = findProductByName(productName);
+  if (!product) {
+    await interaction.editReply({ content: `No product called \`${productName}\`. Pick one from the list.` });
+    return;
+  }
+
+  const user = interaction.options.getUser('user');
+  const name = interaction.options.getString('name');
+  if (!user && !name) {
+    await interaction.editReply({ content: 'Give me either a Discord user or a name — the label needs one.' });
+    return;
+  }
+
+  const quantity = interaction.options.getInteger('quantity', true);
+  const totalCents = Math.round(interaction.options.getNumber('total', true) * 100);
+  const shippingCents = Math.round((interaction.options.getNumber('shipping') ?? 0) * 100);
+
+  const result = logManualOrder({
+    product,
+    quantity,
+    totalCents,
+    shippingCents,
+    source: interaction.options.getString('source', true),
+    discordId: user?.id || null,
+    name: name || user?.globalName || user?.username || null,
+    phone: interaction.options.getString('phone'),
+    address: interaction.options.getString('address'),
+    city: interaction.options.getString('suburb'),
+    state: interaction.options.getString('state'),
+    zip: interaction.options.getString('postcode'),
+  });
+
+  if (!result.ok) {
+    await interaction.editReply({ content: `Could not log that: \`${result.reason}\`.` });
+    return;
+  }
+
+  const order = result.order;
+  pushToSheetInBackground([order], 'logsale');
+
+  const buyer = getBuyer(order.buyer_id);
+  const missing = ['shipping_address', 'city', 'state', 'zip'].filter((f) => !buyer?.[f]);
+
+  await interaction.editReply({
+    content: `✅ Logged **${order.reference_code}** — ${quantity}x ${product.name}, `
+      + `${formatAud(totalCents)}, marked paid.\n`
+      + 'It is on the Labels tab and in the Sales sheet now.\n'
+      + (missing.length
+        ? `\n⚠️ No address yet, so no label will print. Run this again with the address fields, or ask them for it.`
+        : `\n📦 Shipping to ${buyer.name}, ${buyer.city} ${buyer.state} ${buyer.zip}.`),
+  });
+}
+
+async function handleSources(interaction) {
+  if (!isStaff(interaction.member)) {
+    await interaction.reply({ content: 'Staff only.', ephemeral: true });
+    return;
+  }
+
+  const rows = getTotalsBySource();
+  if (!rows.length) {
+    await interaction.reply({ content: 'No sales recorded yet.', ephemeral: true });
+    return;
+  }
+
+  const label = {
+    claim: 'Claim sales', facebook: 'Facebook', wholesale: 'Wholesale',
+    dm: 'Discord DM', instagram: 'Instagram', in_person: 'In person', other: 'Other', late: 'Late orders',
+  };
+  const total = rows.reduce((n, r) => n + r.revenue_cents, 0);
+  const lines = rows.map((r) => {
+    const share = total ? Math.round((r.revenue_cents / total) * 100) : 0;
+    return `**${label[r.source] || r.source}** — ${formatAud(r.revenue_cents)} · ${r.boxes} boxes · ${share}%`;
+  });
+
+  await interaction.reply({
+    content: `💰 **Where the money came from**\n\n${lines.join('\n')}\n\n**Total ${formatAud(total)}**`,
+    ephemeral: true,
+  });
+}
+
 async function handleSchedule(interaction) {
   if (!isStaff(interaction.member)) {
     await interaction.reply({ content: 'Staff only.', ephemeral: true });
@@ -1407,6 +1510,10 @@ export async function handleSlashCommand(interaction) {
       return handleOrder(interaction);
     case 'export':
       return handleExport(interaction);
+    case 'logsale':
+      return handleLogSale(interaction);
+    case 'sources':
+      return handleSources(interaction);
     case 'schedule':
       return handleSchedule(interaction);
     case 'scheduled':

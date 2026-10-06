@@ -241,6 +241,63 @@ export const commandDefinitions = [
     ),
 
   new SlashCommandBuilder()
+    .setName('logsale')
+    .setDescription('Record a sale from Facebook, a DM or wholesale — it becomes a normal order')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addStringOption((o) =>
+      o.setName('product').setDescription('Which product').setRequired(true).setAutocomplete(true),
+    )
+    .addIntegerOption((o) =>
+      o.setName('quantity').setDescription('How many boxes').setRequired(true).setMinValue(1),
+    )
+    .addNumberOption((o) =>
+      o.setName('total').setDescription('Total they paid you in AUD, including any shipping').setRequired(true).setMinValue(0),
+    )
+    .addStringOption((o) =>
+      o
+        .setName('source')
+        .setDescription('Where the sale came from')
+        .setRequired(true)
+        .addChoices(
+          { name: 'Facebook', value: 'facebook' },
+          { name: 'Wholesale', value: 'wholesale' },
+          { name: 'Discord DM', value: 'dm' },
+          { name: 'Instagram', value: 'instagram' },
+          { name: 'In person', value: 'in_person' },
+          { name: 'Other', value: 'other' },
+        ),
+    )
+    .addUserOption((o) =>
+      o.setName('user').setDescription('If they are in the server — reuses their saved address').setRequired(false),
+    )
+    .addStringOption((o) =>
+      o.setName('name').setDescription('Full name for the label').setRequired(false),
+    )
+    .addStringOption((o) =>
+      o.setName('address').setDescription('Street address').setRequired(false),
+    )
+    .addStringOption((o) =>
+      o.setName('suburb').setDescription('Suburb').setRequired(false),
+    )
+    .addStringOption((o) =>
+      o.setName('state').setDescription('State e.g. VIC').setRequired(false),
+    )
+    .addStringOption((o) =>
+      o.setName('postcode').setDescription('Postcode').setRequired(false),
+    )
+    .addStringOption((o) =>
+      o.setName('phone').setDescription('Phone for the courier').setRequired(false),
+    )
+    .addNumberOption((o) =>
+      o.setName('shipping').setDescription('How much of the total was shipping (default 0)').setRequired(false).setMinValue(0),
+    ),
+
+  new SlashCommandBuilder()
+    .setName('sources')
+    .setDescription('Revenue split by where the sale came from')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+
+  new SlashCommandBuilder()
     .setName('schedule')
     .setDescription('Post a message at a set date and time — Melbourne time')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
