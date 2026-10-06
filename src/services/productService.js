@@ -84,6 +84,53 @@ export function findActiveProductByName(productName) {
   `).get(productName.trim());
 }
 
+/**
+ * Products whose sale has ended but are still inside their late window.
+ *
+ * A sale that simply stops leaves money on the table and you get DMs
+ * instead. A sale that stays open at full price teaches people to wait and
+ * see what's left. A short window at a markup does neither.
+ */
+export function findLateProductByName(productName) {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const slug = slugify(productName);
+
+  const bySlug = db.prepare(`
+    SELECT * FROM products
+    WHERE active = 0 AND late_until IS NOT NULL AND late_until > ? AND slug = ?
+  `).get(now, slug);
+  if (bySlug) return bySlug;
+
+  return db.prepare(`
+    SELECT * FROM products
+    WHERE active = 0 AND late_until IS NOT NULL AND late_until > ? AND lower(name) = lower(?)
+  `).get(now, productName.trim());
+}
+
+export function listLateProducts() {
+  return getDb().prepare(`
+    SELECT * FROM products
+    WHERE active = 0 AND late_until IS NOT NULL AND late_until > ? AND quantity_available > 0
+    ORDER BY name ASC
+  `).all(new Date().toISOString());
+}
+
+/** Opens the late window when a sale ends. */
+export function openLateWindow(productId, hours, markupPercent) {
+  const until = new Date(Date.now() + hours * 3600000).toISOString();
+  getDb().prepare(`
+    UPDATE products SET late_until = ?, late_markup_percent = ?, updated_at = ? WHERE id = ?
+  `).run(until, markupPercent, new Date().toISOString(), productId);
+  return until;
+}
+
+/** Shuts the window early, for when you'd rather just be done. */
+export function closeLateWindow(productId) {
+  getDb().prepare('UPDATE products SET late_until = NULL, updated_at = ? WHERE id = ?')
+    .run(new Date().toISOString(), productId);
+}
+
 export function listActiveProducts() {
   return getDb()
     .prepare('SELECT * FROM products WHERE active = 1 ORDER BY name ASC')

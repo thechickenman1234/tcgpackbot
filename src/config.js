@@ -42,4 +42,7 @@ export const config = {
   // the bot runs exactly as before and simply doesn't sync.
   sheetUrl: optional('SHEET_URL', ''),
   sheetSecret: optional('SHEET_SECRET', ''),
+  // How long claims keep working after a sale ends, and what they cost.
+  lateWindowHours: Number(optional('LATE_WINDOW_HOURS', '24')),
+  lateMarkupPercent: Number(optional('LATE_MARKUP_PERCENT', '10')),
 };

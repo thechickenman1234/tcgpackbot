@@ -1,5 +1,5 @@
 import { config } from '../config.js';
-import { listActiveProducts, setProductActive } from './productService.js';
+import { listActiveProducts, openLateWindow, setProductActive } from './productService.js';
 import { clearStockpostPointer, refreshStockpost } from './stockpostService.js';
 
 export function buildSaleOverMessage(productNames = []) {
@@ -43,12 +43,26 @@ export async function endClaimSale(channel, { announce = true, productNames = nu
   const active = listActiveProducts();
   const names = productNames ?? active.map((p) => p.name);
 
+  // The sale closes, but claims keep working for another day at a markup.
+  // Shutting the door completely just moves the orders into your DMs.
   for (const product of active) {
     setProductActive(product.id, false);
+    if (config.lateWindowHours > 0) {
+      openLateWindow(product.id, config.lateWindowHours, config.lateMarkupPercent);
+    }
   }
 
   if (announce && channel?.isTextBased()) {
     await channel.send(buildSaleOverMessage(names));
+    if (config.lateWindowHours > 0 && active.length) {
+      const until = Math.floor((Date.now() + config.lateWindowHours * 3600000) / 1000);
+      await channel.send(
+        `⏰ **Late claims are open for another ${config.lateWindowHours} hours** `
+        + `(until <t:${until}:t>) at **+${config.lateMarkupPercent}%**, while stock lasts.\n`
+        + 'Claim the same way you normally would. After that the sale is closed — '
+        + 'wholesale enquiries only.',
+      );
+    }
   }
 
   if (channel?.client) {

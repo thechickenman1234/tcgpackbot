@@ -64,12 +64,22 @@ function assertWithinLimit(buyerId, product, quantity) {
 /**
  * Create a new claim, or top up an existing pending claim for the same product.
  */
-export function createClaimOrder({ buyerId, product, quantity, claimMessageId }) {
+/**
+ * A late claim is the same claim at a markup. Applied after tier pricing
+ * so it lands on whatever the buyer would otherwise have paid, including
+ * any volume tier, rather than only on the headline price.
+ */
+function applyLateMarkup(priceCents, lateMarkupPercent) {
+  if (!lateMarkupPercent) return priceCents;
+  return Math.round(priceCents * (1 + lateMarkupPercent / 100));
+}
+
+export function createClaimOrder({ buyerId, product, quantity, claimMessageId, lateMarkupPercent = 0 }) {
   ensureBuyer(buyerId);
 
   const pending = getPendingOrderForBuyerProduct(buyerId, product.id);
   if (pending) {
-    return topUpPendingOrder({ order: pending, product, quantity, claimMessageId });
+    return topUpPendingOrder({ order: pending, product, quantity, claimMessageId, lateMarkupPercent });
   }
 
   const limit = assertWithinLimit(buyerId, product, quantity);
@@ -82,7 +92,8 @@ export function createClaimOrder({ buyerId, product, quantity, claimMessageId })
 
   const claimedAt = new Date();
   const referenceCode = generateOrderReference();
-  const pricing = resolveTierPricing(product, quantity);
+  const tier = resolveTierPricing(product, quantity);
+  const pricing = { ...tier, priceCents: applyLateMarkup(tier.priceCents, lateMarkupPercent) };
   // Shipping isn't finalized yet — the buyer picks Standard/Express after the
   // intake form. Provisionally use Standard so the order has a sane total
   // if anything reads it before that choice is made.
@@ -93,8 +104,8 @@ export function createClaimOrder({ buyerId, product, quantity, claimMessageId })
     INSERT INTO orders (
       reference_code, buyer_id, product_id, product_name, quantity,
       unit_price_cents, shipping_cents, total_cents, status, claim_message_id,
-      claimed_at, payment_deadline_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+      claimed_at, payment_deadline_at, source
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
   `).run(
     referenceCode,
     buyerId,
@@ -107,12 +118,13 @@ export function createClaimOrder({ buyerId, product, quantity, claimMessageId })
     claimMessageId,
     claimedAt.toISOString(),
     addHoursIso(config.paymentDeadlineHours, claimedAt),
+    lateMarkupPercent ? 'late' : 'claim',
   );
 
-  return { ok: true, order: getOrderById(result.lastInsertRowid), toppedUp: false };
+  return { ok: true, order: getOrderById(result.lastInsertRowid), toppedUp: false, late: Boolean(lateMarkupPercent) };
 }
 
-export function topUpPendingOrder({ order, product, quantity, claimMessageId = null }) {
+export function topUpPendingOrder({ order, product, quantity, claimMessageId = null, lateMarkupPercent = 0 }) {
   if (!order || order.status !== 'pending') {
     return { ok: false, reason: 'invalid_status', order };
   }
@@ -126,7 +138,10 @@ export function topUpPendingOrder({ order, product, quantity, claimMessageId = n
   }
 
   const newQuantity = order.quantity + quantity;
-  const pricing = resolveTierPricing(product, newQuantity);
+  const tier = resolveTierPricing(product, newQuantity);
+  // Otherwise claiming one during the sale and topping up during the late
+  // window would buy the whole lot at the old price.
+  const pricing = { ...tier, priceCents: applyLateMarkup(tier.priceCents, lateMarkupPercent) };
   // Keep whatever shipping method they already chose, if any — only fall
   // back to Standard if they haven't picked one yet.
   const shippingCents = order.shipping_method === 'express'

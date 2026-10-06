@@ -14,6 +14,8 @@ import {
 } from './buyerService.js';
 import {
   findActiveProductByName,
+  findLateProductByName,
+  listLateProducts,
   getProductById,
   getProductMaxPerBuyer,
   listActiveProducts,
@@ -69,14 +71,25 @@ async function briefReply(message, text) {
 export function resolveClaimProduct(productName) {
   if (productName) {
     const product = findActiveProductByName(productName);
-    if (!product) return { ok: false, reason: 'unknown', productName };
-    return { ok: true, product };
+    if (product) return { ok: true, product, late: false };
+
+    // The sale is over but the window has not shut yet. Still a valid
+    // claim, just a dearer one.
+    const late = findLateProductByName(productName);
+    if (late) return { ok: true, product: late, late: true };
+
+    return { ok: false, reason: 'unknown', productName };
   }
 
   const active = listActiveProducts().filter((p) => p.quantity_available > 0);
-  if (active.length === 1) return { ok: true, product: active[0] };
-  if (active.length === 0) return { ok: false, reason: 'no_sale' };
-  return { ok: false, reason: 'need_product' };
+  if (active.length === 1) return { ok: true, product: active[0], late: false };
+  if (active.length > 1) return { ok: false, reason: 'need_product' };
+
+  const late = listLateProducts();
+  if (late.length === 1) return { ok: true, product: late[0], late: true };
+  if (late.length > 1) return { ok: false, reason: 'need_product' };
+
+  return { ok: false, reason: 'no_sale' };
 }
 
 async function postTopUpUpdate(order, buyerUser, added, shippingDetails) {
@@ -152,12 +165,14 @@ export async function fulfillClaim({
   quantity,
   claimMessageId = null,
   shippingDetails = null,
+  lateMarkupPercent = 0,
 }) {
   const created = createClaimOrder({
     buyerId: buyerUser.id,
     product,
     quantity,
     claimMessageId,
+    lateMarkupPercent,
   });
 
   if (!created.ok) {
@@ -302,6 +317,7 @@ export async function handleClaimMessage(message) {
     product,
     quantity: parsed.quantity,
     claimMessageId: message.id,
+    lateMarkupPercent: resolved.late ? (product.late_markup_percent || 0) : 0,
   });
 
   if (!result.ok) {
