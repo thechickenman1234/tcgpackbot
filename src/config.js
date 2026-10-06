@@ -21,6 +21,8 @@ export const config = {
   appealsChannelId: optional('APPEALS_CHANNEL_ID'),
   staffRoleId: required('STAFF_ROLE_ID'),
   bannedRoleId: optional('BANNED_ROLE_ID'),
+  // Handed out automatically the first time someone is marked paid.
+  buyerRoleId: optional('BUYER_ROLE_ID', ''),
   payId: required('PAYID'),
   paypalEmail: optional('PAYPAL_EMAIL', ''),
   paypalFeePercent: Number(optional('PAYPAL_FEE_PERCENT', '2.9')),

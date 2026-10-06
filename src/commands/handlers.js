@@ -17,6 +17,7 @@ import {
 } from '../services/giveawayService.js';
 import { buildBoardEmbed } from '../services/giveawayBoard.js';
 import { getTotalsBySource, logManualOrder } from '../services/manualOrderService.js';
+import { grantBuyerRole } from '../services/buyerRoleService.js';
 import {
   ZONE,
   cancelScheduled,
@@ -399,9 +400,11 @@ async function handlePaid(interaction) {
   }
 
   pushToSheetInBackground([result.order], 'paid');
+  const gotRole = await grantBuyerRole(interaction.client, order.buyer_id);
 
   await interaction.reply({
-    content: `✅ Marked **${order.reference_code}** as **paid** (${formatAud(order.total_cents)}).`,
+    content: `✅ Marked **${order.reference_code}** as **paid** (${formatAud(order.total_cents)}).`
+      + (gotRole ? '\n🏅 Buyer role given.' : ''),
   });
 }
 
@@ -1230,6 +1233,7 @@ async function handleLogSale(interaction) {
 
   const order = result.order;
   pushToSheetInBackground([order], 'logsale');
+  await grantBuyerRole(interaction.client, order.buyer_id);
 
   const buyer = getBuyer(order.buyer_id);
   const missing = ['shipping_address', 'city', 'state', 'zip'].filter((f) => !buyer?.[f]);
