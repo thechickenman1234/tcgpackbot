@@ -17,7 +17,7 @@ import {
 } from '../services/giveawayService.js';
 import { buildBoardEmbed } from '../services/giveawayBoard.js';
 import { getTotalsBySource, logManualOrder } from '../services/manualOrderService.js';
-import { grantBuyerRole } from '../services/buyerRoleService.js';
+import { backfillBuyerRole, grantBuyerRole } from '../services/buyerRoleService.js';
 import {
   ZONE,
   cancelScheduled,
@@ -53,6 +53,7 @@ import {
   getOrderByReference,
   getOrderByThreadId,
   getAllPaidOrders,
+  getAllPayingBuyerIds,
   getClaimedTotals,
   getClaimsForProduct,
   getPaidOrdersForBuyer,
@@ -1185,6 +1186,53 @@ async function handleEntries(interaction) {
  * rather than scrolling the channel also means corrected and re-posted
  * claims are already resolved - the order is the truth, not the message.
  */
+async function handleBackfillBuyers(interaction) {
+  if (!isStaff(interaction.member)) {
+    await interaction.reply({ content: 'Staff only.', ephemeral: true });
+    return;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+
+  const ids = getAllPayingBuyerIds().filter((id) => !id.startsWith('ext:'));
+  if (!ids.length) {
+    await interaction.editReply({ content: 'Nobody has been marked paid yet.' });
+    return;
+  }
+
+  await interaction.editReply({
+    content: `Working through **${ids.length}** past buyers… this takes about `
+      + `${Math.ceil(ids.length / 4)} seconds.`,
+  });
+
+  const result = await backfillBuyerRole(interaction.client, ids, async (progress) => {
+    await interaction.editReply({
+      content: `Working through **${ids.length}** past buyers…\n`
+        + `🏅 ${progress.granted} given so far.`,
+    }).catch(() => {});
+  });
+
+  if (!result.ok) {
+    const why = {
+      no_role: `No role called **${result.roleName}** in this server. Rename it or set \`BUYER_ROLE_ID\`.`,
+      no_permission: 'The bot is missing **Manage Roles**.',
+      role_too_high: `The bot's own role sits **below** **${result.roleName}**. `
+        + "Drag the bot's role above it in Server Settings → Roles.",
+    }[result.reason] || 'Could not run the backfill.';
+    await interaction.editReply({ content: `⚠️ ${why}` });
+    return;
+  }
+
+  await interaction.editReply({
+    content: `🏅 **Backfill done** — role **${result.roleName}**\n\n`
+      + `• **${result.granted}** given the role just now\n`
+      + `• ${result.already} already had it\n`
+      + `• ${result.gone} have left the server\n`
+      + (result.failed ? `• ⚠️ ${result.failed} failed — check the Railway logs\n` : '')
+      + `\nFrom **${ids.length}** people who have ever paid.`,
+  });
+}
+
 async function handleLogSale(interaction) {
   if (!isStaff(interaction.member)) {
     await interaction.reply({ content: 'Staff only.', ephemeral: true });
@@ -1514,6 +1562,8 @@ export async function handleSlashCommand(interaction) {
       return handleOrder(interaction);
     case 'export':
       return handleExport(interaction);
+    case 'backfillbuyers':
+      return handleBackfillBuyers(interaction);
     case 'logsale':
       return handleLogSale(interaction);
     case 'sources':

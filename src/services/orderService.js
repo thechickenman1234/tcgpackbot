@@ -435,6 +435,18 @@ export function getClaimsForProduct(productName, sinceIso = null) {
   `).all(productName, sinceIso, sinceIso);
 }
 
+/**
+ * Everyone who has ever paid for anything. Synthetic ids from /logsale are
+ * filtered out by the caller, since they belong to people who are not on
+ * Discord at all.
+ */
+export function getAllPayingBuyerIds() {
+  return getDb().prepare(`
+    SELECT DISTINCT buyer_id FROM orders
+    WHERE status IN ('paid', 'shipped', 'archived')
+  `).all().map((r) => r.buyer_id);
+}
+
 /** Shipped orders, most recent first — what /unship offers in its dropdown. */
 export function getRecentlyShippedOrders(limit = 50) {
   return getDb().prepare(`

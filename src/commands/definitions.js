@@ -241,6 +241,11 @@ export const commandDefinitions = [
     ),
 
   new SlashCommandBuilder()
+    .setName('backfillbuyers')
+    .setDescription('Give the buyer role to everyone who has ever paid — safe to run more than once')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+
+  new SlashCommandBuilder()
     .setName('logsale')
     .setDescription('Record a sale from Facebook, a DM or wholesale — it becomes a normal order')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)

@@ -61,6 +61,55 @@ export async function grantBuyerRole(client, discordId) {
   }
 }
 
+/**
+ * Gives the role to everyone who has ever paid, for the people who bought
+ * before this existed.
+ *
+ * Members are fetched once in bulk rather than one at a time, and there is
+ * a small pause between role writes. discord.js queues around rate limits
+ * on its own, but a few hundred writes back to back will stall every other
+ * thing the bot is trying to do, including somebody mid-claim.
+ */
+export async function backfillBuyerRole(client, buyerIds, onProgress = null) {
+  const guild = await client.guilds.fetch(config.guildId);
+  await guild.roles.fetch();
+  const role = resolveBuyerRole(guild);
+  if (!role) return { ok: false, reason: 'no_role', roleName: config.buyerRoleName };
+
+  const me = guild.members.me;
+  if (!me?.permissions.has('ManageRoles')) return { ok: false, reason: 'no_permission' };
+  if (role.position >= me.roles.highest.position) {
+    return { ok: false, reason: 'role_too_high', roleName: role.name };
+  }
+
+  await guild.members.fetch();
+
+  const result = { ok: true, roleName: role.name, granted: 0, already: 0, gone: 0, failed: 0 };
+
+  for (const id of buyerIds) {
+    const member = guild.members.cache.get(id);
+    if (!member) {
+      result.gone += 1;
+      continue;
+    }
+    if (member.roles.cache.has(role.id)) {
+      result.already += 1;
+      continue;
+    }
+    try {
+      await member.roles.add(role.id, 'Has paid for an order');
+      result.granted += 1;
+      await new Promise((r) => setTimeout(r, 250));
+      if (onProgress && result.granted % 10 === 0) await onProgress(result);
+    } catch (err) {
+      console.error(`Backfill failed for ${member.user.tag}: ${err.message}`);
+      result.failed += 1;
+    }
+  }
+
+  return result;
+}
+
 /** Logged once on boot so a misconfiguration is obvious before a sale. */
 export async function reportBuyerRoleStatus(client) {
   try {
