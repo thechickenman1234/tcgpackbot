@@ -20,6 +20,7 @@ import {
 } from './services/inviteTracker.js';
 import { startGiveawayBoardJob } from './services/giveawayBoard.js';
 import { startScheduledMessagesJob } from './jobs/scheduledMessages.js';
+import { reportBuyerRoleStatus } from './services/buyerRoleService.js';
 
 initDatabase();
 
@@ -55,6 +56,7 @@ client.once('ready', async () => {
   await primeInviteCache(client);
   startGiveawayBoardJob(client);
   startScheduledMessagesJob(client);
+  await reportBuyerRoleStatus(client);
 });
 
 client.on('inviteCreate', handleInviteCreate);

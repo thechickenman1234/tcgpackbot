@@ -21,8 +21,11 @@ export const config = {
   appealsChannelId: optional('APPEALS_CHANNEL_ID'),
   staffRoleId: required('STAFF_ROLE_ID'),
   bannedRoleId: optional('BANNED_ROLE_ID'),
-  // Handed out automatically the first time someone is marked paid.
+  // Handed out automatically the first time someone is marked paid. The id
+  // is optional: without it the role is found by name, so an existing
+  // "Buyer" role works with nothing to configure.
   buyerRoleId: optional('BUYER_ROLE_ID', ''),
+  buyerRoleName: optional('BUYER_ROLE_NAME', 'Buyer'),
   payId: required('PAYID'),
   paypalEmail: optional('PAYPAL_EMAIL', ''),
   paypalFeePercent: Number(optional('PAYPAL_FEE_PERCENT', '2.9')),
