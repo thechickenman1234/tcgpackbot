@@ -257,6 +257,15 @@ export const commandDefinitions = [
     .addStringOption((o) =>
       o.setName('time').setDescription('Pick a time').setRequired(true).setAutocomplete(true),
     )
+    .addAttachmentOption((o) =>
+      o.setName('image').setDescription('Picture or video to post with it').setRequired(false),
+    )
+    .addAttachmentOption((o) =>
+      o.setName('image2').setDescription('Another one').setRequired(false),
+    )
+    .addAttachmentOption((o) =>
+      o.setName('image3').setDescription('And another').setRequired(false),
+    )
     .addChannelOption((o) =>
       o.setName('channel').setDescription('Where to post it (default: this channel)').setRequired(false),
     )

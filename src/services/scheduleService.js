@@ -1,4 +1,7 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { getDb } from '../db/database.js';
+import { config } from '../config.js';
 
 /**
  * Scheduled messages.
@@ -63,11 +66,69 @@ export function formatMelbourne(iso) {
   }).format(new Date(iso));
 }
 
-export function scheduleMessage({ channelId, content, sendAt, repeatEvery, createdBy }) {
+/**
+ * Where scheduled images live.
+ *
+ * Discord attachment links are signed and expire within about a day, so a
+ * post scheduled for next week would go out with a dead image if we only
+ * kept the URL. The file is copied onto the Railway volume instead and
+ * uploaded fresh when the message actually sends.
+ */
+const MEDIA_DIR = path.join(path.dirname(path.resolve(config.databasePath)), 'scheduled-media');
+
+const MAX_BYTES = 20 * 1024 * 1024;
+
+export async function saveAttachment(attachment) {
+  if (!attachment) return null;
+  if (attachment.size > MAX_BYTES) {
+    throw new Error(`${attachment.name} is ${(attachment.size / 1048576).toFixed(1)}MB — the limit is 20MB`);
+  }
+
+  const response = await fetch(attachment.url);
+  if (!response.ok) throw new Error(`Could not download ${attachment.name} (${response.status})`);
+  const buffer = Buffer.from(await response.arrayBuffer());
+
+  fs.mkdirSync(MEDIA_DIR, { recursive: true });
+  const safe = attachment.name.replace(/[^\w.-]/g, '_').slice(-80);
+  const file = path.join(MEDIA_DIR, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safe}`);
+  fs.writeFileSync(file, buffer);
+  return file;
+}
+
+export function readAttachments(row) {
+  if (!row?.attachments) return [];
+  try {
+    return JSON.parse(row.attachments).filter((f) => fs.existsSync(f));
+  } catch {
+    return [];
+  }
+}
+
+/** Removes the stored copies once a message can never be sent again. */
+export function cleanupAttachments(row) {
+  for (const file of readAttachments(row)) {
+    try {
+      fs.unlinkSync(file);
+    } catch (err) {
+      console.error(`Could not delete scheduled image ${file}:`, err.message);
+    }
+  }
+}
+
+export function scheduleMessage({ channelId, content, sendAt, repeatEvery, createdBy, attachments = [] }) {
   const result = getDb().prepare(`
-    INSERT INTO scheduled_messages (channel_id, content, send_at, repeat_every, created_by, created_at)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(channelId, content, sendAt, repeatEvery || null, createdBy, new Date().toISOString());
+    INSERT INTO scheduled_messages
+      (channel_id, content, send_at, repeat_every, created_by, created_at, attachments)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    channelId,
+    content,
+    sendAt,
+    repeatEvery || null,
+    createdBy,
+    new Date().toISOString(),
+    attachments.length ? JSON.stringify(attachments) : null,
+  );
 
   return getScheduledById(result.lastInsertRowid);
 }

@@ -148,6 +148,7 @@ export function initDatabase() {
       created_at TEXT NOT NULL,
       last_sent_at TEXT,
       last_error TEXT,
+      attachments TEXT,
       status TEXT NOT NULL DEFAULT 'pending'
         CHECK (status IN ('pending', 'sent', 'cancelled', 'failed'))
     );
@@ -170,6 +171,7 @@ export function initDatabase() {
   ensureColumn('orders', 'exported_at', 'TEXT');
   ensureColumn('orders', 'tracking_code', 'TEXT');
   ensureColumn('orders', 'combined_with', 'TEXT');
+  ensureColumn('scheduled_messages', 'attachments', 'TEXT');
 
   return db;
 }

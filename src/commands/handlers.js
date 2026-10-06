@@ -19,9 +19,12 @@ import { buildBoardEmbed } from '../services/giveawayBoard.js';
 import {
   ZONE,
   cancelScheduled,
+  cleanupAttachments,
   formatMelbourne,
   listPending,
   melbourneToUtc,
+  readAttachments,
+  saveAttachment,
   scheduleMessage,
 } from '../services/scheduleService.js';
 import {
@@ -1200,23 +1203,39 @@ async function handleSchedule(interaction) {
     return;
   }
 
+  await interaction.deferReply({ ephemeral: true });
+
+  // Copied to the volume now rather than linked, because the Discord URL
+  // these arrive on expires long before a post scheduled for next week.
+  const files = [];
+  try {
+    for (const name of ['image', 'image2', 'image3']) {
+      const saved = await saveAttachment(interaction.options.getAttachment(name));
+      if (saved) files.push(saved);
+    }
+  } catch (err) {
+    await interaction.editReply({ content: `Could not save that attachment: ${err.message}` });
+    return;
+  }
+
   const row = scheduleMessage({
     channelId: channel.id,
     content,
     sendAt: when.toISOString(),
     repeatEvery: repeat,
     createdBy: interaction.user.id,
+    attachments: files,
   });
 
   const unix = Math.floor(when.getTime() / 1000);
   const pings = /@everyone|@here/.test(content);
 
-  await interaction.reply({
+  await interaction.editReply({
     content: `🕒 Scheduled for **${formatMelbourne(row.send_at)}** (<t:${unix}:R>) in ${channel}.\n`
+      + (files.length ? `📎 ${files.length} attachment${files.length === 1 ? '' : 's'} saved.\n` : '')
       + (repeat ? `Repeats **${repeat === 'daily' ? 'every day' : 'every week'}** at that time.\n` : '')
       + (pings ? '⚠️ This pings the server. The bot needs **Mention Everyone** in that channel.\n' : '')
       + `\n> ${content.replace(/\n/g, '\n> ').slice(0, 600)}`,
-    ephemeral: true,
   });
 }
 
@@ -1235,7 +1254,9 @@ async function handleScheduled(interaction) {
   const lines = rows.slice(0, 20).map((r) => {
     const unix = Math.floor(new Date(r.send_at).getTime() / 1000);
     const repeat = r.repeat_every ? ` · repeats ${r.repeat_every}` : '';
-    return `**${formatMelbourne(r.send_at)}** (<t:${unix}:R>) in <#${r.channel_id}>${repeat}\n`
+    const pics = readAttachments(r).length;
+    const media = pics ? ` · 📎 ${pics}` : '';
+    return `**${formatMelbourne(r.send_at)}** (<t:${unix}:R>) in <#${r.channel_id}>${repeat}${media}\n`
       + `> ${r.content.replace(/\s+/g, ' ').slice(0, 90)}`;
   });
 
@@ -1253,6 +1274,7 @@ async function handleUnschedule(interaction) {
 
   const id = Number(interaction.options.getString('message', true));
   const result = cancelScheduled(id);
+  if (result.ok) cleanupAttachments(result.row);
   await interaction.reply({
     content: result.ok
       ? `Cancelled the message set for **${formatMelbourne(result.row.send_at)}**.`
