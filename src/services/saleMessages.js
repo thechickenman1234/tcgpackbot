@@ -35,9 +35,15 @@ export function saleTitle(products, override = null) {
   return longName(products[0]).replace(/\s*\([^)]*\)\s*$/, '').trim();
 }
 
-function priceBlock(product, bullet) {
+/**
+ * The short claim name only appears when there is more than one product.
+ * With a single product on, "claim 2x" is the whole instruction and naming
+ * it just gives people something else to get wrong.
+ */
+function priceBlock(product, bullet, showClaimName) {
   const unit = product.unit?.trim() || 'box';
-  const lines = [`${bullet}**${formatAud(product.price_cents)}**/${unit} ('${product.name}')`];
+  const suffix = showClaimName ? ` ('${product.name}')` : '';
+  const lines = [`${bullet}**${formatAud(product.price_cents)}**/${unit}${suffix}`];
   if (product.details?.trim()) {
     lines.push('', product.details.trim());
   }
@@ -59,7 +65,8 @@ function shippingBlock(bullet) {
 export function buildSalePriceAnnouncement(products, { note = null, title = null } = {}) {
   const heading = saleTitle(products, title);
 
-  const blocks = products.map((p) => [`**${longName(p)}:**`, priceBlock(p, '')].join('\n'));
+  const many = products.length > 1;
+  const blocks = products.map((p) => [`**${longName(p)}:**`, priceBlock(p, '', many)].join('\n'));
 
   return [
     `**below are the official prices for our ${heading} Claim Sale Tonite at 8pm-Midnight!**`,
@@ -80,7 +87,7 @@ export function buildSaleLiveMessage(products, { note = null, title = null } = {
   const heading = saleTitle(products, title);
   const single = products.length === 1;
 
-  const blocks = products.map((p) => [`${longName(p)}:`, priceBlock(p, '• ')].join('\n'));
+  const blocks = products.map((p) => [`${longName(p)}:`, priceBlock(p, '• ', !single)].join('\n'));
 
   // With one product on, the name is noise. With several, it is the only
   // way the bot can tell which one somebody meant.

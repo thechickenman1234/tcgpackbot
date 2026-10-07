@@ -131,9 +131,12 @@ async function handleProduct(interaction) {
     }
 
     const display = interaction.options.getString('display');
-    // Typing a real newline into a slash command is not possible, so \n
-    // is accepted and turned into one.
-    const details = interaction.options.getString('details')?.replace(/\\n/g, '\n');
+    // Separate boxes rather than one field with escape characters in it.
+    // Nobody should have to type \n into a Discord command.
+    const lines = ['line1', 'line2', 'line3']
+      .map((n) => interaction.options.getString(n))
+      .filter(Boolean);
+    const details = lines.length ? lines.join('\n') : undefined;
 
     const unit = interaction.options.getString('unit');
 

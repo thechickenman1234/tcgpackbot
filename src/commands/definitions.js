@@ -20,9 +20,18 @@ export const commandDefinitions = [
         )
         .addStringOption((o) =>
           o
-            .setName('details')
-            .setDescription('Pack structure. Use \\n for new lines, e.g. 15 packs = 1 inner box\\n12 inner = 1 case')
+            .setName('line1')
+            .setDescription('Line under the price, e.g. 15 packs = 1 inner box')
             .setRequired(false),
+        )
+        .addStringOption((o) =>
+          o
+            .setName('line2')
+            .setDescription('Another line, e.g. 12 inner box = 1 case')
+            .setRequired(false),
+        )
+        .addStringOption((o) =>
+          o.setName('line3').setDescription('And another').setRequired(false),
         )
         .addStringOption((o) =>
           o
