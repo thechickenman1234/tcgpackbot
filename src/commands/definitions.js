@@ -283,6 +283,66 @@ export const commandDefinitions = [
     ),
 
   new SlashCommandBuilder()
+    .setName('newsale')
+    .setDescription('Set up a whole claim sale night in one go')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addStringOption((o) =>
+      o.setName('name').setDescription('Short name buyers type, e.g. coin set').setRequired(true).setAutocomplete(true),
+    )
+    .addNumberOption((o) =>
+      o.setName('price').setDescription('Price in AUD, e.g. 23').setRequired(true).setMinValue(0.01),
+    )
+    .addIntegerOption((o) =>
+      o.setName('quantity').setDescription('How many you have to sell').setRequired(true).setMinValue(0),
+    )
+    .addStringOption((o) =>
+      o.setName('date').setDescription('Which night').setRequired(true).setAutocomplete(true),
+    )
+    .addStringOption((o) =>
+      o.setName('display').setDescription('Long name for the posts, e.g. Chinese 30th Celebration Coin Set').setRequired(false),
+    )
+    .addStringOption((o) =>
+      o
+        .setName('unit')
+        .setDescription('What the price is per. Default box.')
+        .setRequired(false)
+        .addChoices(
+          { name: 'box', value: 'box' },
+          { name: 'case', value: 'case' },
+          { name: 'pack', value: 'pack' },
+          { name: 'coin set', value: 'coin set' },
+          { name: 'bundle', value: 'bundle' },
+        ),
+    )
+    .addStringOption((o) =>
+      o.setName('line1').setDescription('Line under the price, e.g. 15 packs = 1 inner box').setRequired(false),
+    )
+    .addStringOption((o) =>
+      o.setName('line2').setDescription('Another line, e.g. 12 inner box = 1 case').setRequired(false),
+    )
+    .addNumberOption((o) =>
+      o.setName('shipping').setDescription('Flat shipping in AUD (default 5)').setRequired(false).setMinValue(0),
+    )
+    .addIntegerOption((o) =>
+      o.setName('limit').setDescription('Max per buyer. Leave out for no limit.').setRequired(false).setMinValue(1),
+    )
+    .addStringOption((o) =>
+      o.setName('start').setDescription('Start time (default 8:00 pm)').setRequired(false).setAutocomplete(true),
+    )
+    .addStringOption((o) =>
+      o.setName('end').setDescription('End time (default midnight)').setRequired(false).setAutocomplete(true),
+    )
+    .addStringOption((o) =>
+      o.setName('announce').setDescription('When prices go up (default 7:00 pm)').setRequired(false).setAutocomplete(true),
+    )
+    .addStringOption((o) =>
+      o.setName('note').setDescription('Extra line added to both posts').setRequired(false),
+    )
+    .addStringOption((o) =>
+      o.setName('title').setDescription('Override the sale name in the headings').setRequired(false),
+    ),
+
+  new SlashCommandBuilder()
     .setName('schedulesale')
     .setDescription('Open and close a claim sale automatically — defaults to 8pm until midnight')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)

@@ -19,8 +19,10 @@ import { buildBoardEmbed } from '../services/giveawayBoard.js';
 import { getTotalsBySource, logManualOrder } from '../services/manualOrderService.js';
 import { backfillBuyerRole, grantBuyerRole } from '../services/buyerRoleService.js';
 import {
+  addProductToSale,
   cancelScheduledSale,
   createScheduledSale,
+  findPendingSaleAt,
   listUpcomingSales,
   productsFor,
 } from '../services/scheduledSaleService.js';
@@ -946,10 +948,12 @@ export async function handleAutocomplete(interaction) {
     return;
   }
 
-  if (interaction.commandName === 'schedulesale' || interaction.commandName === 'schedule') {
+  if (['schedulesale', 'newsale', 'schedule'].includes(interaction.commandName)) {
     const focused = interaction.options.getFocused(true);
 
-    if (focused.name.startsWith('product')) {
+    // /newsale calls it "name" because it also creates the product. You can
+    // still type a brand new one; the list is only a shortcut to existing.
+    if (focused.name.startsWith('product') || focused.name === 'name') {
       const choices = listAllProducts()
         .filter((p) => p.name.toLowerCase().includes(typed))
         .slice(0, 25)
@@ -1267,6 +1271,113 @@ async function handleEntries(interaction) {
  * rather than scrolling the channel also means corrected and re-posted
  * claims are already resolved - the order is the truth, not the message.
  */
+/**
+ * The whole sale night in one command: make or update the product, give it
+ * its long name and pack structure, and queue the night it goes on.
+ *
+ * Running it again for the same night adds that product to the same sale
+ * rather than starting a competing one, which is how a two product night
+ * gets set up without a second command.
+ */
+async function handleNewSale(interaction) {
+  if (!isStaff(interaction.member)) {
+    await interaction.reply({ content: 'Staff only.', ephemeral: true });
+    return;
+  }
+
+  const name = interaction.options.getString('name', true).trim();
+  const price = interaction.options.getNumber('price', true);
+  const quantity = interaction.options.getInteger('quantity', true);
+  const date = interaction.options.getString('date', true);
+  const shipping = interaction.options.getNumber('shipping');
+  const limit = interaction.options.getInteger('limit');
+
+  const start = interaction.options.getString('start') || '20:00';
+  const end = interaction.options.getString('end') || '00:00';
+  const announce = interaction.options.getString('announce') || '19:00';
+
+  const startAt = melbourneToUtc(date, start);
+  let endAt = melbourneToUtc(date, end);
+  if (!startAt || !endAt) {
+    await interaction.reply({ content: 'Could not read those times. Pick them from the dropdowns.', ephemeral: true });
+    return;
+  }
+  if (endAt.getTime() <= startAt.getTime()) {
+    const [y, m, d] = date.split('-').map(Number);
+    const nextDay = new Date(Date.UTC(y, m - 1, d + 1));
+    endAt = melbourneToUtc(nextDay.toISOString().slice(0, 10), end);
+  }
+  if (endAt.getTime() <= Date.now()) {
+    await interaction.reply({ content: 'That sale would already be over. Pick a later night.', ephemeral: true });
+    return;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+
+  // Make it or update it. Either way the product ends up matching what was
+  // just typed, so a repeated run is a correction rather than an error.
+  let product = findProductByName(name);
+  const isNew = !product;
+  if (product) {
+    setProductPrice(product.id, Math.round(price * 100));
+    updateProductStock(product.id, quantity);
+    if (shipping !== null) setProductShipping(product.id, Math.round(shipping * 100));
+    if (limit !== null) setProductMaxPerBuyer(product.id, limit);
+  } else {
+    product = createProduct({
+      name,
+      priceCents: Math.round(price * 100),
+      quantity,
+      shippingCents: Math.round((shipping ?? config.standardShippingCents / 100) * 100),
+      maxPerBuyer: limit,
+    });
+    // Products are created live; the scheduled sale is what decides when
+    // claims actually open.
+    setProductActive(product.id, false);
+  }
+
+  const lines = ['line1', 'line2'].map((n) => interaction.options.getString(n)).filter(Boolean);
+  product = setProductDescription(product.id, {
+    displayName: interaction.options.getString('display') ?? undefined,
+    details: lines.length ? lines.join('\n') : undefined,
+    unit: interaction.options.getString('unit') ?? undefined,
+  });
+
+  let announceAt = melbourneToUtc(date, announce);
+  if (!announceAt || announceAt.getTime() >= startAt.getTime()) announceAt = null;
+
+  const existing = findPendingSaleAt(startAt.toISOString());
+  const sale = existing
+    ? addProductToSale(existing.id, product.id)
+    : createScheduledSale({
+      productIds: [product.id],
+      startAt: startAt.toISOString(),
+      endAt: endAt.toISOString(),
+      channelId: config.claimsChannelId,
+      createdBy: interaction.user.id,
+      announceAt: config.announceChannelId && announceAt ? announceAt.toISOString() : null,
+      announceChannelId: announceAt ? config.announceChannelId : null,
+      note: interaction.options.getString('note'),
+      title: interaction.options.getString('title'),
+    });
+
+  const all = productsFor(sale);
+  const startUnix = Math.floor(new Date(sale.start_at).getTime() / 1000);
+
+  await interaction.editReply({
+    content: `✅ **${isNew ? 'Created' : 'Updated'} ${product.name}** and `
+      + `${existing ? 'added it to the sale already queued' : 'scheduled the sale'}.\n\n`
+      + `**On that night:**\n${all.map((p) => `• ${p.display_name || p.name} — ${formatAud(p.price_cents)}/${p.unit || 'box'}, ${p.quantity_available} in stock`).join('\n')}\n\n`
+      + (sale.announce_at ? `📣 Prices **${formatMelbourne(sale.announce_at)}** in <#${sale.announce_channel_id}>\n` : '')
+      + `🔔 Opens **${formatMelbourne(sale.start_at)}** (<t:${startUnix}:R>)\n`
+      + `🔒 Closes **${formatMelbourne(sale.end_at)}**, then 24h late claims at +${config.lateMarkupPercent}%\n\n`
+      + (all.length > 1
+        ? 'Two or more products, so the posts will tell people to name which one they want.'
+        : 'One product, so the posts will just say **"claim 2x"**.')
+      + '\n\nRun this again with the same date to add another product to the same night.',
+  });
+}
+
 async function handleScheduleSale(interaction) {
   if (!isStaff(interaction.member)) {
     await interaction.reply({ content: 'Staff only.', ephemeral: true });
@@ -1769,6 +1880,8 @@ export async function handleSlashCommand(interaction) {
       return handleOrder(interaction);
     case 'export':
       return handleExport(interaction);
+    case 'newsale':
+      return handleNewSale(interaction);
     case 'schedulesale':
       return handleScheduleSale(interaction);
     case 'scheduledsales':

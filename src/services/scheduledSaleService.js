@@ -35,6 +35,34 @@ export function createScheduledSale({
   return getScheduledSaleById(result.lastInsertRowid);
 }
 
+/**
+ * A sale already queued for the same night, so running the setup command a
+ * second time adds the product to that night rather than creating a
+ * competing sale at the same minute.
+ */
+export function findPendingSaleAt(startAtIso) {
+  return getDb().prepare(`
+    SELECT * FROM scheduled_sales WHERE status = 'pending' AND start_at = ? LIMIT 1
+  `).get(startAtIso);
+}
+
+export function addProductToSale(saleId, productId) {
+  const sale = getScheduledSaleById(saleId);
+  if (!sale) return null;
+
+  let ids = [];
+  try {
+    ids = JSON.parse(sale.product_ids);
+  } catch {
+    ids = [];
+  }
+  if (!ids.includes(productId)) ids.push(productId);
+
+  getDb().prepare('UPDATE scheduled_sales SET product_ids = ? WHERE id = ?')
+    .run(JSON.stringify(ids), saleId);
+  return getScheduledSaleById(saleId);
+}
+
 /** Sales whose price announcement is due but hasn't gone out. */
 export function getSalesToAnnounce() {
   return getDb().prepare(`
