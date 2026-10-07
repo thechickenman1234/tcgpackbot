@@ -30,11 +30,20 @@ function titleCase(text) {
  * left off when the long name already contains it, which stops things
  * reading "Chinese 30th Celebration Coin Set (Coin Set)".
  */
-function longName(product) {
+function longName(product, { showClaimName = false } = {}) {
   const display = product.display_name?.trim();
   if (!display) return titleCase(product.name);
-  // Already says it, or already ends in its own bracket like "Full Case
-  // (48 boxes)". Either way, adding another reads badly.
+
+  // With several products on, the bracket is the instruction: it is the
+  // exact text somebody has to type to claim this one. So it goes on
+  // every heading, in the exact casing it is stored, even where that
+  // repeats the long name. Being unambiguous beats reading neatly.
+  if (showClaimName) {
+    return display.toLowerCase() === product.name.toLowerCase()
+      ? display
+      : `${display} (${product.name})`;
+  }
+
   if (display.toLowerCase().includes(product.name.toLowerCase())) return display;
   if (/\([^)]*\)\s*$/.test(display)) return display;
   return `${display} (${titleCase(product.name)})`;
@@ -87,7 +96,10 @@ export function buildSalePriceAnnouncement(products, { note = null, title = null
   const heading = saleTitle(products, title);
 
 
-  const blocks = products.map((p) => [`**${longName(p)}:**`, priceBlock(p, '')].join('\n'));
+  const many = products.length > 1;
+  const blocks = products.map(
+    (p) => [`**${longName(p, { showClaimName: many })}:**`, priceBlock(p, '')].join('\n'),
+  );
 
   return [
     `**below are the official prices for our ${heading ? `${heading} ` : ``}Claim Sale Tonite at 8pm-Midnight!**`,
@@ -108,7 +120,9 @@ export function buildSaleLiveMessage(products, { note = null, title = null } = {
   const heading = saleTitle(products, title);
   const single = products.length === 1;
 
-  const blocks = products.map((p) => [`${longName(p)}:`, priceBlock(p, '• ')].join('\n'));
+  const blocks = products.map(
+    (p) => [`${longName(p, { showClaimName: !single })}:`, priceBlock(p, '• ')].join('\n'),
+  );
 
   // With one product on, the name is noise. With several, it is the only
   // way the bot can tell which one somebody meant.
