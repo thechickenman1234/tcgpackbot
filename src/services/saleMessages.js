@@ -18,8 +18,26 @@ import { formatAud } from '../utils/permissions.js';
  * entirely, because "claim 2x" is all anyone needs to send.
  */
 
+function titleCase(text) {
+  return text.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/**
+ * "Chinese Dreamscape Flourish Vol 4 (Pika Box)".
+ *
+ * The bracket is the short name buyers type, added automatically rather
+ * than typed into the long name, so the two can never drift apart. It is
+ * left off when the long name already contains it, which stops things
+ * reading "Chinese 30th Celebration Coin Set (Coin Set)".
+ */
 function longName(product) {
-  return product.display_name?.trim() || product.name;
+  const display = product.display_name?.trim();
+  if (!display) return titleCase(product.name);
+  // Already says it, or already ends in its own bracket like "Full Case
+  // (48 boxes)". Either way, adding another reads badly.
+  if (display.toLowerCase().includes(product.name.toLowerCase())) return display;
+  if (/\([^)]*\)\s*$/.test(display)) return display;
+  return `${display} (${titleCase(product.name)})`;
 }
 
 /**
@@ -36,14 +54,13 @@ export function saleTitle(products, override = null) {
 }
 
 /**
- * The short claim name only appears when there is more than one product.
- * With a single product on, "claim 2x" is the whole instruction and naming
- * it just gives people something else to get wrong.
+ * Just the price. The short name buyers type is already in the bracket on
+ * the line above, so repeating it here in quotes was saying the same thing
+ * twice.
  */
-function priceBlock(product, bullet, showClaimName) {
+function priceBlock(product, bullet) {
   const unit = product.unit?.trim() || 'box';
-  const suffix = showClaimName ? ` ('${product.name}')` : '';
-  const lines = [`${bullet}**${formatAud(product.price_cents)}**/${unit}${suffix}`];
+  const lines = [`${bullet}**${formatAud(product.price_cents)}**/${unit}`];
   if (product.details?.trim()) {
     lines.push('', product.details.trim());
   }
@@ -65,8 +82,8 @@ function shippingBlock(bullet) {
 export function buildSalePriceAnnouncement(products, { note = null, title = null } = {}) {
   const heading = saleTitle(products, title);
 
-  const many = products.length > 1;
-  const blocks = products.map((p) => [`**${longName(p)}:**`, priceBlock(p, '', many)].join('\n'));
+
+  const blocks = products.map((p) => [`**${longName(p)}:**`, priceBlock(p, '')].join('\n'));
 
   return [
     `**below are the official prices for our ${heading} Claim Sale Tonite at 8pm-Midnight!**`,
@@ -87,7 +104,7 @@ export function buildSaleLiveMessage(products, { note = null, title = null } = {
   const heading = saleTitle(products, title);
   const single = products.length === 1;
 
-  const blocks = products.map((p) => [`${longName(p)}:`, priceBlock(p, '• ', !single)].join('\n'));
+  const blocks = products.map((p) => [`${longName(p)}:`, priceBlock(p, '• ')].join('\n'));
 
   // With one product on, the name is noise. With several, it is the only
   // way the bot can tell which one somebody meant.
