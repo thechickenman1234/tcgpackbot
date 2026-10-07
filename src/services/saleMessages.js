@@ -115,9 +115,14 @@ export function buildSaleLiveMessage(products, { note = null, title = null } = {
       `E.g. if you want 2, type: **"claim 2x"**`,
     ]
     : [
-      '**How to Claim:** Type **claim** + how many + which item (the name in brackets above).',
+      // The list of names is spelled out below rather than pointing at
+      // "the brackets above", because the bracket is left off whenever the
+      // long name already contains the short one.
+      '**How to Claim:** Type **claim** + how many + which item.',
       '',
-      `E.g. **"claim 2x ${products[0].name}"**   (Works for ${products.map((p) => p.name).join(', ')})`,
+      `E.g. **"claim 2x ${products[0].name}"**`,
+      '',
+      `Works for: ${products.map((p) => `**${p.name}**`).join(', ')}`,
     ];
 
   return [
