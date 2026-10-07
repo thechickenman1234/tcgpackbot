@@ -340,6 +340,15 @@ export const commandDefinitions = [
     )
     .addStringOption((o) =>
       o.setName('title').setDescription('Override the sale name in the headings').setRequired(false),
+    )
+    .addAttachmentOption((o) =>
+      o.setName('image').setDescription('Product photo for both posts').setRequired(false),
+    )
+    .addAttachmentOption((o) =>
+      o.setName('image2').setDescription('Another photo').setRequired(false),
+    )
+    .addAttachmentOption((o) =>
+      o.setName('image3').setDescription('And another').setRequired(false),
     ),
 
   new SlashCommandBuilder()

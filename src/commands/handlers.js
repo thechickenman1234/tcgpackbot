@@ -1346,10 +1346,24 @@ async function handleNewSale(interaction) {
   let announceAt = melbourneToUtc(date, announce);
   if (!announceAt || announceAt.getTime() >= startAt.getTime()) announceAt = null;
 
+  // Copied to the volume now, because the Discord link these arrive on
+  // expires long before a sale scheduled for next week.
+  const files = [];
+  try {
+    for (const n of ['image', 'image2', 'image3']) {
+      const saved = await saveAttachment(interaction.options.getAttachment(n));
+      if (saved) files.push(saved);
+    }
+  } catch (err) {
+    await interaction.editReply({ content: `Could not save that image: ${err.message}` });
+    return;
+  }
+
   const existing = findPendingSaleAt(startAt.toISOString());
   const sale = existing
-    ? addProductToSale(existing.id, product.id)
+    ? addProductToSale(existing.id, product.id, files)
     : createScheduledSale({
+      attachments: files,
       productIds: [product.id],
       startAt: startAt.toISOString(),
       endAt: endAt.toISOString(),
@@ -1368,6 +1382,9 @@ async function handleNewSale(interaction) {
     content: `✅ **${isNew ? 'Created' : 'Updated'} ${product.name}** and `
       + `${existing ? 'added it to the sale already queued' : 'scheduled the sale'}.\n\n`
       + `**On that night:**\n${all.map((p) => `• ${p.display_name || p.name} — ${formatAud(p.price_cents)}/${p.unit || 'box'}, ${p.quantity_available} in stock`).join('\n')}\n\n`
+      + (readAttachments(sale).length
+        ? `🖼️ ${readAttachments(sale).length} image${readAttachments(sale).length === 1 ? '' : 's'} on both posts\n`
+        : '')
       + (sale.announce_at ? `📣 Prices **${formatMelbourne(sale.announce_at)}** in <#${sale.announce_channel_id}>\n` : '')
       + `🔔 Opens **${formatMelbourne(sale.start_at)}** (<t:${startUnix}:R>)\n`
       + `🔒 Closes **${formatMelbourne(sale.end_at)}**, then 24h late claims at +${config.lateMarkupPercent}%\n\n`

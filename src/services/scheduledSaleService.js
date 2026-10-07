@@ -13,13 +13,13 @@ import { getProductById, setProductActive } from './productService.js';
 
 export function createScheduledSale({
   productIds, startAt, endAt, channelId, createdBy,
-  announceAt = null, announceChannelId = null, note = null, title = null,
+  announceAt = null, announceChannelId = null, note = null, title = null, attachments = [],
 }) {
   const result = getDb().prepare(`
     INSERT INTO scheduled_sales (
       product_ids, start_at, end_at, channel_id, created_by, created_at,
-      announce_at, announce_channel_id, note, title
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      announce_at, announce_channel_id, note, title, attachments
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     JSON.stringify(productIds),
     startAt,
@@ -31,6 +31,7 @@ export function createScheduledSale({
     announceChannelId,
     note,
     title,
+    attachments.length ? JSON.stringify(attachments) : null,
   );
   return getScheduledSaleById(result.lastInsertRowid);
 }
@@ -46,20 +47,27 @@ export function findPendingSaleAt(startAtIso) {
   `).get(startAtIso);
 }
 
-export function addProductToSale(saleId, productId) {
+export function addProductToSale(saleId, productId, newAttachments = []) {
   const sale = getScheduledSaleById(saleId);
   if (!sale) return null;
 
-  let ids = [];
-  try {
-    ids = JSON.parse(sale.product_ids);
-  } catch {
-    ids = [];
-  }
+  const parse = (json, fallback) => {
+    try {
+      return JSON.parse(json) ?? fallback;
+    } catch {
+      return fallback;
+    }
+  };
+
+  const ids = parse(sale.product_ids, []);
   if (!ids.includes(productId)) ids.push(productId);
 
-  getDb().prepare('UPDATE scheduled_sales SET product_ids = ? WHERE id = ?')
-    .run(JSON.stringify(ids), saleId);
+  // Images from a second product join the ones already on the night, so
+  // the post shows everything that is on rather than only the first lot.
+  const files = [...parse(sale.attachments, []), ...newAttachments];
+
+  getDb().prepare('UPDATE scheduled_sales SET product_ids = ?, attachments = ? WHERE id = ?')
+    .run(JSON.stringify(ids), files.length ? JSON.stringify(files) : null, saleId);
   return getScheduledSaleById(saleId);
 }
 

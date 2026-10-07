@@ -1,3 +1,4 @@
+import { AttachmentBuilder } from 'discord.js';
 import { config } from '../config.js';
 import {
   getSalesToAnnounce,
@@ -12,7 +13,7 @@ import {
 import { buildStockpostPayload, rememberStockpost } from '../services/stockpostService.js';
 import { endClaimSale } from '../services/saleAnnouncements.js';
 import { buildSaleLiveMessage, buildSalePriceAnnouncement } from '../services/saleMessages.js';
-import { formatMelbourne } from '../services/scheduleService.js';
+import { cleanupAttachments, formatMelbourne, readAttachments } from '../services/scheduleService.js';
 
 /**
  * Opens and closes scheduled claim sales.
@@ -36,6 +37,7 @@ async function tick(client) {
 
       await channel.send({
         content: buildSalePriceAnnouncement(products, { note: sale.note, title: sale.title }),
+        files: readAttachments(sale).map((f) => new AttachmentBuilder(f)),
         allowedMentions: { parse: ['everyone'] },
       });
       markAnnounced(sale.id);
@@ -58,8 +60,11 @@ async function tick(client) {
 
       // The written post first, since that is the one people read, then
       // the stock embed with the dropdown under it.
+      // Uploaded again rather than linked from the earlier post, so the
+      // claims channel stands on its own if someone jumps straight here.
       await channel.send({
         content: buildSaleLiveMessage(result.products, { note: sale.note, title: sale.title }),
+        files: readAttachments(sale).map((f) => new AttachmentBuilder(f)),
         allowedMentions: { parse: ['everyone'] },
       });
 
@@ -88,6 +93,7 @@ async function tick(client) {
         productNames: productsFor(sale).map((p) => p.name),
       });
       markClosed(sale.id);
+      cleanupAttachments(sale);
       console.log(`Scheduled sale ${sale.id} closed`);
     } catch (err) {
       console.error(`Scheduled sale ${sale.id} failed to close:`, err.message);

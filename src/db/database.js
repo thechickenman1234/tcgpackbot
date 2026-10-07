@@ -200,6 +200,7 @@ export function initDatabase() {
   ensureColumn('scheduled_sales', 'announced_at', 'TEXT');
   ensureColumn('scheduled_sales', 'note', 'TEXT');
   ensureColumn('scheduled_sales', 'title', 'TEXT');
+  ensureColumn('scheduled_sales', 'attachments', 'TEXT');
   // Where an order came from. Claim sales stay the default so every
   // existing row keeps meaning what it already meant.
   ensureColumn('orders', 'source', "TEXT NOT NULL DEFAULT 'claim'");
