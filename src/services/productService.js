@@ -131,6 +131,25 @@ export function closeLateWindow(productId) {
     .run(new Date().toISOString(), productId);
 }
 
+/**
+ * The long name and pack structure used in sale announcements. Both are
+ * optional: without them the announcement falls back to the short name and
+ * just the price, which is still correct, only plainer.
+ */
+export function setProductDescription(productId, { displayName, details, unit }) {
+  const db = getDb();
+  const current = getProductById(productId);
+  db.prepare('UPDATE products SET display_name = ?, details = ?, unit = ?, updated_at = ? WHERE id = ?')
+    .run(
+      displayName === undefined ? current.display_name : (displayName || null),
+      details === undefined ? current.details : (details || null),
+      unit === undefined ? (current.unit || 'box') : (unit || 'box'),
+      new Date().toISOString(),
+      productId,
+    );
+  return getProductById(productId);
+}
+
 export function listActiveProducts() {
   return getDb()
     .prepare('SELECT * FROM products WHERE active = 1 ORDER BY name ASC')

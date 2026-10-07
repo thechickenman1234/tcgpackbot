@@ -11,10 +11,15 @@ import { getProductById, setProductActive } from './productService.js';
  * people asking whether it is on.
  */
 
-export function createScheduledSale({ productIds, startAt, endAt, channelId, createdBy }) {
+export function createScheduledSale({
+  productIds, startAt, endAt, channelId, createdBy,
+  announceAt = null, announceChannelId = null, note = null, title = null,
+}) {
   const result = getDb().prepare(`
-    INSERT INTO scheduled_sales (product_ids, start_at, end_at, channel_id, created_by, created_at)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO scheduled_sales (
+      product_ids, start_at, end_at, channel_id, created_by, created_at,
+      announce_at, announce_channel_id, note, title
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     JSON.stringify(productIds),
     startAt,
@@ -22,8 +27,29 @@ export function createScheduledSale({ productIds, startAt, endAt, channelId, cre
     channelId,
     createdBy,
     new Date().toISOString(),
+    announceAt,
+    announceChannelId,
+    note,
+    title,
   );
   return getScheduledSaleById(result.lastInsertRowid);
+}
+
+/** Sales whose price announcement is due but hasn't gone out. */
+export function getSalesToAnnounce() {
+  return getDb().prepare(`
+    SELECT * FROM scheduled_sales
+    WHERE status = 'pending'
+      AND announce_at IS NOT NULL
+      AND announced_at IS NULL
+      AND announce_at <= ?
+    ORDER BY announce_at ASC
+  `).all(new Date().toISOString());
+}
+
+export function markAnnounced(id) {
+  getDb().prepare('UPDATE scheduled_sales SET announced_at = ? WHERE id = ?')
+    .run(new Date().toISOString(), id);
 }
 
 export function getScheduledSaleById(id) {

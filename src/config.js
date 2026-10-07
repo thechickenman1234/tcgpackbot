@@ -19,6 +19,8 @@ export const config = {
   claimsChannelId: required('CLAIMS_CHANNEL_ID'),
   staffLogChannelId: required('STAFF_LOG_CHANNEL_ID'),
   appealsChannelId: optional('APPEALS_CHANNEL_ID'),
+  // Where tonight's prices go before the sale opens.
+  announceChannelId: optional('ANNOUNCE_CHANNEL_ID', ''),
   staffRoleId: required('STAFF_ROLE_ID'),
   bannedRoleId: optional('BANNED_ROLE_ID'),
   // Handed out automatically the first time someone is marked paid. The id

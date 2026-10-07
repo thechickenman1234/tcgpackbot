@@ -49,6 +49,7 @@ import {
   setProductActive,
   setProductMaxPerBuyer,
   setProductPrice,
+  setProductDescription,
   setProductShipping,
   setProductTiers,
   updateProductStock,
@@ -120,6 +121,37 @@ async function handleProduct(interaction) {
   }
 
   const sub = interaction.options.getSubcommand();
+
+  if (sub === 'describe') {
+    const name = interaction.options.getString('name', true).trim();
+    const product = findProductByName(name);
+    if (!product) {
+      await interaction.reply({ content: `No product called \`${name}\`.`, ephemeral: true });
+      return;
+    }
+
+    const display = interaction.options.getString('display');
+    // Typing a real newline into a slash command is not possible, so \n
+    // is accepted and turned into one.
+    const details = interaction.options.getString('details')?.replace(/\\n/g, '\n');
+
+    const unit = interaction.options.getString('unit');
+
+    const updated = setProductDescription(product.id, {
+      displayName: display === null ? undefined : display,
+      details: details === undefined ? undefined : details,
+      unit: unit === null ? undefined : unit,
+    });
+
+    await interaction.reply({
+      content: `✅ Updated **${updated.name}**\n\n`
+        + `**Long name:** ${updated.display_name || '_not set, announcements will use the short name_'}\n`
+        + `**Priced per:** ${updated.unit || 'box'}\n`
+        + `**Details:**\n${updated.details ? `> ${updated.details.replace(/\n/g, '\n> ')}` : '_none_'}`,
+      ephemeral: true,
+    });
+    return;
+  }
 
   if (sub === 'add') {
     const name = interaction.options.getString('name', true).trim();
@@ -1251,6 +1283,9 @@ async function handleScheduleSale(interaction) {
   const date = interaction.options.getString('date', true);
   const start = interaction.options.getString('start') || '20:00';
   const end = interaction.options.getString('end') || '00:00';
+  const announce = interaction.options.getString('announce') || '19:00';
+  const note = interaction.options.getString('note');
+  const title = interaction.options.getString('title');
 
   const startAt = melbourneToUtc(date, start);
   let endAt = melbourneToUtc(date, end);
@@ -1272,25 +1307,43 @@ async function handleScheduleSale(interaction) {
     return;
   }
 
+  // Prices go out before the doors open, so it only makes sense earlier
+  // on the same night.
+  let announceAt = melbourneToUtc(date, announce);
+  if (!announceAt || announceAt.getTime() >= startAt.getTime()) announceAt = null;
+  const announceChannelId = config.announceChannelId || null;
+
   const sale = createScheduledSale({
     productIds: products.map((p) => p.id),
     startAt: startAt.toISOString(),
     endAt: endAt.toISOString(),
     channelId: config.claimsChannelId,
     createdBy: interaction.user.id,
+    announceAt: announceChannelId && announceAt ? announceAt.toISOString() : null,
+    announceChannelId: announceAt ? announceChannelId : null,
+    note,
+    title,
   });
 
   const startUnix = Math.floor(startAt.getTime() / 1000);
   const soldOut = products.filter((p) => p.quantity_available <= 0);
+  const noLongName = products.filter((p) => !p.display_name);
 
   await interaction.reply({
     content: `🗓️ **Sale scheduled**\n\n`
-      + `${products.map((p) => `• ${p.name} — ${p.quantity_available} in stock`).join('\n')}\n\n`
-      + `Opens **${formatMelbourne(sale.start_at)}** (<t:${startUnix}:R>)\n`
-      + `Closes **${formatMelbourne(sale.end_at)}**, then the 24h late window at +${config.lateMarkupPercent}%.\n\n`
-      + 'The bot posts the stock message and the sale announcement itself. You do not need to be here.'
+      + `${products.map((p) => `• ${p.name} — ${formatAud(p.price_cents)}, ${p.quantity_available} in stock`).join('\n')}\n\n`
+      + (sale.announce_at
+        ? `📣 Prices posted **${formatMelbourne(sale.announce_at)}** in <#${announceChannelId}>\n`
+        : '📣 No price announcement. Set `ANNOUNCE_CHANNEL_ID` on Railway to turn it on.\n')
+      + `🔔 Opens **${formatMelbourne(sale.start_at)}** (<t:${startUnix}:R>)\n`
+      + `🔒 Closes **${formatMelbourne(sale.end_at)}**, then 24h late claims at +${config.lateMarkupPercent}%.\n\n`
+      + 'The bot writes both posts itself. You do not need to be here.'
       + (soldOut.length
-        ? `\n\n⚠️ **${soldOut.map((p) => p.name).join(', ')}** has no stock. Set it with \`/product stock\` before then.`
+        ? `\n\n⚠️ **${soldOut.map((p) => p.name).join(', ')}** has no stock. Set it with \`/product stock\`.`
+        : '')
+      + (noLongName.length
+        ? `\n\n💡 **${noLongName.map((p) => p.name).join(', ')}** has no long name, so the post will just say "${noLongName[0].name}". `
+          + 'Set one with `/product describe`.'
         : ''),
     ephemeral: true,
   });

@@ -181,6 +181,13 @@ export function initDatabase() {
   ensureColumn('products', 'shipping_cents', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn('products', 'max_per_buyer', 'INTEGER');
   ensureColumn('products', 'pricing_tiers', 'TEXT');
+  // The long name used in announcements. products.name stays the short
+  // thing buyers actually type, e.g. "pika box".
+  ensureColumn('products', 'display_name', 'TEXT');
+  // Free text under the price: pack counts, case structure, that sort of thing.
+  ensureColumn('products', 'details', 'TEXT');
+  // box, case, pack, coin set - whatever the price is per.
+  ensureColumn('products', 'unit', "TEXT NOT NULL DEFAULT 'box'");
   ensureColumn('orders', 'shipping_cents', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn('orders', 'reminder_sent_at', 'TEXT');
   ensureColumn('orders', 'shipping_method', "TEXT CHECK (shipping_method IN ('standard', 'express'))");
@@ -188,6 +195,11 @@ export function initDatabase() {
   ensureColumn('orders', 'tracking_code', 'TEXT');
   ensureColumn('orders', 'combined_with', 'TEXT');
   ensureColumn('scheduled_messages', 'attachments', 'TEXT');
+  ensureColumn('scheduled_sales', 'announce_at', 'TEXT');
+  ensureColumn('scheduled_sales', 'announce_channel_id', 'TEXT');
+  ensureColumn('scheduled_sales', 'announced_at', 'TEXT');
+  ensureColumn('scheduled_sales', 'note', 'TEXT');
+  ensureColumn('scheduled_sales', 'title', 'TEXT');
   // Where an order came from. Claim sales stay the default so every
   // existing row keeps meaning what it already meant.
   ensureColumn('orders', 'source', "TEXT NOT NULL DEFAULT 'claim'");

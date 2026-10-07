@@ -7,6 +7,39 @@ export const commandDefinitions = [
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addSubcommand((sub) =>
       sub
+        .setName('describe')
+        .setDescription('Set the long name and pack structure used in sale announcements')
+        .addStringOption((o) =>
+          o.setName('name').setDescription('The short name buyers type, e.g. pika box').setRequired(true),
+        )
+        .addStringOption((o) =>
+          o
+            .setName('display')
+            .setDescription('Long name for announcements, e.g. Chinese Dreamscape Flourish Vol 4 (Pika Box)')
+            .setRequired(false),
+        )
+        .addStringOption((o) =>
+          o
+            .setName('details')
+            .setDescription('Pack structure. Use \\n for new lines, e.g. 15 packs = 1 inner box\\n12 inner = 1 case')
+            .setRequired(false),
+        )
+        .addStringOption((o) =>
+          o
+            .setName('unit')
+            .setDescription('What the price is per. Default box.')
+            .setRequired(false)
+            .addChoices(
+              { name: 'box', value: 'box' },
+              { name: 'case', value: 'case' },
+              { name: 'pack', value: 'pack' },
+              { name: 'coin set', value: 'coin set' },
+              { name: 'bundle', value: 'bundle' },
+            ),
+        ),
+    )
+    .addSubcommand((sub) =>
+      sub
         .setName('add')
         .setDescription('Add a product to the active sale')
         .addStringOption((o) => o.setName('name').setDescription('Product name buyers must claim').setRequired(true))
@@ -261,6 +294,25 @@ export const commandDefinitions = [
     )
     .addStringOption((o) =>
       o.setName('end').setDescription('End time (default midnight)').setRequired(false).setAutocomplete(true),
+    )
+    .addStringOption((o) =>
+      o
+        .setName('announce')
+        .setDescription('When to post the prices in announcements (default 7:00 pm)')
+        .setRequired(false)
+        .setAutocomplete(true),
+    )
+    .addStringOption((o) =>
+      o
+        .setName('note')
+        .setDescription('Extra line for both posts, e.g. ordering both boxes gets shipping off one')
+        .setRequired(false),
+    )
+    .addStringOption((o) =>
+      o
+        .setName('title')
+        .setDescription('Override the sale name in the headings')
+        .setRequired(false),
     ),
 
   new SlashCommandBuilder()
