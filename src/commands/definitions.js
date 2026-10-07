@@ -241,6 +241,42 @@ export const commandDefinitions = [
     ),
 
   new SlashCommandBuilder()
+    .setName('schedulesale')
+    .setDescription('Open and close a claim sale automatically — defaults to 8pm until midnight')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addStringOption((o) =>
+      o.setName('product').setDescription('What is on sale').setRequired(true).setAutocomplete(true),
+    )
+    .addStringOption((o) =>
+      o.setName('date').setDescription('Which night').setRequired(true).setAutocomplete(true),
+    )
+    .addStringOption((o) =>
+      o.setName('product2').setDescription('A second product').setRequired(false).setAutocomplete(true),
+    )
+    .addStringOption((o) =>
+      o.setName('product3').setDescription('A third product').setRequired(false).setAutocomplete(true),
+    )
+    .addStringOption((o) =>
+      o.setName('start').setDescription('Start time (default 8:00 pm)').setRequired(false).setAutocomplete(true),
+    )
+    .addStringOption((o) =>
+      o.setName('end').setDescription('End time (default midnight)').setRequired(false).setAutocomplete(true),
+    ),
+
+  new SlashCommandBuilder()
+    .setName('scheduledsales')
+    .setDescription('See the claim sales that are queued up')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+
+  new SlashCommandBuilder()
+    .setName('cancelsale')
+    .setDescription('Cancel a scheduled claim sale')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addStringOption((o) =>
+      o.setName('sale').setDescription('Which one').setRequired(true).setAutocomplete(true),
+    ),
+
+  new SlashCommandBuilder()
     .setName('backfillbuyers')
     .setDescription('Give the buyer role to everyone who has ever paid — safe to run more than once')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),

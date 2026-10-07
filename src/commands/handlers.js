@@ -19,6 +19,12 @@ import { buildBoardEmbed } from '../services/giveawayBoard.js';
 import { getTotalsBySource, logManualOrder } from '../services/manualOrderService.js';
 import { backfillBuyerRole, grantBuyerRole } from '../services/buyerRoleService.js';
 import {
+  cancelScheduledSale,
+  createScheduledSale,
+  listUpcomingSales,
+  productsFor,
+} from '../services/scheduledSaleService.js';
+import {
   ZONE,
   cancelScheduled,
   cleanupAttachments,
@@ -893,8 +899,48 @@ export async function handleAutocomplete(interaction) {
     return;
   }
 
-  if (interaction.commandName === 'schedule') {
+  if (interaction.commandName === 'cancelsale') {
+    const choices = listUpcomingSales()
+      .map((s) => ({
+        name: `${formatMelbourne(s.start_at)} — ${productsFor(s).map((p) => p.name).join(', ')}`.slice(0, 100),
+        value: String(s.id),
+      }))
+      .filter((c) => c.name.toLowerCase().includes(typed))
+      .slice(0, 25);
+    await interaction.respond(choices);
+    return;
+  }
+
+  if (interaction.commandName === 'schedulesale' || interaction.commandName === 'schedule') {
     const focused = interaction.options.getFocused(true);
+
+    if (focused.name.startsWith('product')) {
+      const choices = listAllProducts()
+        .filter((p) => p.name.toLowerCase().includes(typed))
+        .slice(0, 25)
+        .map((p) => ({
+          name: `${p.name} — ${p.quantity_available} in stock`.slice(0, 100),
+          value: p.name.slice(0, 100),
+        }));
+      await interaction.respond(choices);
+      return;
+    }
+
+    if (focused.name === 'start' || focused.name === 'end') {
+      const choices = [];
+      for (let h = 0; h < 24 && choices.length < 25; h += 1) {
+        for (const m of [0, 30]) {
+          const value = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+          const hour12 = h % 12 === 0 ? 12 : h % 12;
+          const label = `${hour12}:${String(m).padStart(2, '0')} ${h < 12 ? 'am' : 'pm'}`;
+          if (label.replace(/[:\s]/g, '').includes(typed.replace(/[:\s]/g, '')) || value.includes(typed)) {
+            if (choices.length < 25) choices.push({ name: label, value });
+          }
+        }
+      }
+      await interaction.respond(choices);
+      return;
+    }
 
     if (focused.name === 'date') {
       // Discord has no date picker, so the next two months become a
@@ -1186,6 +1232,111 @@ async function handleEntries(interaction) {
  * rather than scrolling the channel also means corrected and re-posted
  * claims are already resolved - the order is the truth, not the message.
  */
+async function handleScheduleSale(interaction) {
+  if (!isStaff(interaction.member)) {
+    await interaction.reply({ content: 'Staff only.', ephemeral: true });
+    return;
+  }
+
+  const names = ['product', 'product2', 'product3']
+    .map((n) => interaction.options.getString(n))
+    .filter(Boolean);
+
+  const products = names.map((n) => findProductByName(n)).filter(Boolean);
+  if (products.length !== names.length) {
+    await interaction.reply({ content: 'One of those products does not exist. Pick from the list.', ephemeral: true });
+    return;
+  }
+
+  const date = interaction.options.getString('date', true);
+  const start = interaction.options.getString('start') || '20:00';
+  const end = interaction.options.getString('end') || '00:00';
+
+  const startAt = melbourneToUtc(date, start);
+  let endAt = melbourneToUtc(date, end);
+  if (!startAt || !endAt) {
+    await interaction.reply({ content: 'Could not read those times. Pick them from the dropdowns.', ephemeral: true });
+    return;
+  }
+
+  // Midnight is the next day, not four hours before the sale starts.
+  if (endAt.getTime() <= startAt.getTime()) {
+    const [y, m, d] = date.split('-').map(Number);
+    const nextDay = new Date(Date.UTC(y, m - 1, d + 1));
+    const iso = nextDay.toISOString().slice(0, 10);
+    endAt = melbourneToUtc(iso, end);
+  }
+
+  if (endAt.getTime() <= Date.now()) {
+    await interaction.reply({ content: 'That sale would already be over. Pick a later night.', ephemeral: true });
+    return;
+  }
+
+  const sale = createScheduledSale({
+    productIds: products.map((p) => p.id),
+    startAt: startAt.toISOString(),
+    endAt: endAt.toISOString(),
+    channelId: config.claimsChannelId,
+    createdBy: interaction.user.id,
+  });
+
+  const startUnix = Math.floor(startAt.getTime() / 1000);
+  const soldOut = products.filter((p) => p.quantity_available <= 0);
+
+  await interaction.reply({
+    content: `🗓️ **Sale scheduled**\n\n`
+      + `${products.map((p) => `• ${p.name} — ${p.quantity_available} in stock`).join('\n')}\n\n`
+      + `Opens **${formatMelbourne(sale.start_at)}** (<t:${startUnix}:R>)\n`
+      + `Closes **${formatMelbourne(sale.end_at)}**, then the 24h late window at +${config.lateMarkupPercent}%.\n\n`
+      + 'The bot posts the stock message and the sale announcement itself. You do not need to be here.'
+      + (soldOut.length
+        ? `\n\n⚠️ **${soldOut.map((p) => p.name).join(', ')}** has no stock. Set it with \`/product stock\` before then.`
+        : ''),
+    ephemeral: true,
+  });
+}
+
+async function handleScheduledSales(interaction) {
+  if (!isStaff(interaction.member)) {
+    await interaction.reply({ content: 'Staff only.', ephemeral: true });
+    return;
+  }
+
+  const sales = listUpcomingSales();
+  if (!sales.length) {
+    await interaction.reply({ content: 'No sales queued. Set one with `/schedulesale`.', ephemeral: true });
+    return;
+  }
+
+  const lines = sales.map((s) => {
+    const startUnix = Math.floor(new Date(s.start_at).getTime() / 1000);
+    const names = productsFor(s).map((p) => p.name).join(', ') || 'products missing';
+    const state = s.status === 'open' ? '🟢 **live now**' : `opens <t:${startUnix}:R>`;
+    return `**${formatMelbourne(s.start_at)}** → ${formatMelbourne(s.end_at)} · ${state}\n> ${names}`;
+  });
+
+  await interaction.reply({
+    content: `🗓️ **${sales.length} queued**\n\n${lines.join('\n\n')}`.slice(0, 1900),
+    ephemeral: true,
+  });
+}
+
+async function handleCancelSale(interaction) {
+  if (!isStaff(interaction.member)) {
+    await interaction.reply({ content: 'Staff only.', ephemeral: true });
+    return;
+  }
+
+  const result = cancelScheduledSale(Number(interaction.options.getString('sale', true)));
+  await interaction.reply({
+    content: result.ok
+      ? `Cancelled the sale set for **${formatMelbourne(result.sale.start_at)}**.`
+      + (result.sale.status === 'open' ? '\n⚠️ It was already live — run `/endsale` to close it properly.' : '')
+      : 'That sale has already finished or been cancelled.',
+    ephemeral: true,
+  });
+}
+
 async function handleBackfillBuyers(interaction) {
   if (!isStaff(interaction.member)) {
     await interaction.reply({ content: 'Staff only.', ephemeral: true });
@@ -1562,6 +1713,12 @@ export async function handleSlashCommand(interaction) {
       return handleOrder(interaction);
     case 'export':
       return handleExport(interaction);
+    case 'schedulesale':
+      return handleScheduleSale(interaction);
+    case 'scheduledsales':
+      return handleScheduledSales(interaction);
+    case 'cancelsale':
+      return handleCancelSale(interaction);
     case 'backfillbuyers':
       return handleBackfillBuyers(interaction);
     case 'logsale':

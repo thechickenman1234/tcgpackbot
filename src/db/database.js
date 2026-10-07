@@ -153,6 +153,22 @@ export function initDatabase() {
         CHECK (status IN ('pending', 'sent', 'cancelled', 'failed'))
     );
 
+    CREATE TABLE IF NOT EXISTS scheduled_sales (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_ids TEXT NOT NULL,
+      start_at TEXT NOT NULL,
+      end_at TEXT NOT NULL,
+      channel_id TEXT NOT NULL,
+      opened_at TEXT,
+      closed_at TEXT,
+      last_error TEXT,
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'open', 'closed', 'cancelled', 'failed'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_sales_due ON scheduled_sales(status, start_at, end_at);
     CREATE INDEX IF NOT EXISTS idx_scheduled_due ON scheduled_messages(status, send_at);
     CREATE INDEX IF NOT EXISTS idx_entries_giveaway ON giveaway_entries(giveaway_id);
     CREATE INDEX IF NOT EXISTS idx_entries_inviter ON giveaway_entries(giveaway_id, inviter_id);
