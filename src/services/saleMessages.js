@@ -50,6 +50,10 @@ function longName(product) {
  */
 export function saleTitle(products, override = null) {
   if (override?.trim()) return override.trim();
+  // Naming one of four products in the heading just misleads people about
+  // what is on. With several, the heading says nothing and the list below
+  // does the work. Pass a title when the whole lot has a name.
+  if (products.length > 1) return null;
   return longName(products[0]).replace(/\s*\([^)]*\)\s*$/, '').trim();
 }
 
@@ -86,7 +90,7 @@ export function buildSalePriceAnnouncement(products, { note = null, title = null
   const blocks = products.map((p) => [`**${longName(p)}:**`, priceBlock(p, '')].join('\n'));
 
   return [
-    `**below are the official prices for our ${heading} Claim Sale Tonite at 8pm-Midnight!**`,
+    `**below are the official prices for our ${heading ? `${heading} ` : ``}Claim Sale Tonite at 8pm-Midnight!**`,
     '',
     blocks.join('\n\n'),
     '',
@@ -126,7 +130,7 @@ export function buildSaleLiveMessage(products, { note = null, title = null } = {
     ];
 
   return [
-    `**${heading} Claim Sale Now Live!**`,
+    `**${heading ? `${heading} ` : ``}Claim Sale Now Live!**`,
     '',
     blocks.join('\n\n'),
     '',
