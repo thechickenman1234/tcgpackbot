@@ -515,15 +515,24 @@ async function postTrackingToThread(client, order) {
  * everything else pointing at it is a parcel. Anything else is a guess,
  * and returns null so the caller can ask for an explicit reference.
  */
+const STALE_SPAN_DAYS = 14;
+
 function ordersInOneParcel(orders) {
   if (orders.length <= 1) return orders;
-  const anchors = orders.filter((o) => !o.combined_with);
-  if (anchors.length !== 1) return null;
-  const anchor = anchors[0];
-  const allJoined = orders.every(
-    (o) => o.id === anchor.id || o.combined_with === anchor.reference_code,
-  );
-  return allJoined ? orders : null;
+
+  // The Labels tab prints one label per buyer, so everything a buyer has
+  // waiting goes in the one parcel and shares its tracking code. That is
+  // true now that orders are never combined - the grouping happens at
+  // packing time rather than being something the buyer opted into.
+  const dates = orders.map((o) => o.claimed_at).filter(Boolean).sort();
+  if (dates.length < 2) return orders;
+
+  const spanDays = (new Date(dates[dates.length - 1]) - new Date(dates[0])) / 86400000;
+
+  // Weeks apart is not one parcel, it is an older order that went out and
+  // was never marked shipped. Messaging that buyer about a parcel they
+  // received last month is the exact mistake this guard exists to stop.
+  return spanDays > STALE_SPAN_DAYS ? null : orders;
 }
 
 /**
@@ -572,7 +581,11 @@ async function handleTracking(interaction) {
         const list = orders
           .map((o) => `\`${o.reference_code}\`${o.paid_at ? ` (${o.paid_at.slice(0, 10)})` : ''}`)
           .join(', ');
-        failed.push(`${who} — ${orders.length} unshipped orders, never combined: ${list}. Paste the one you mean.`);
+        failed.push(
+          `${who} — ${orders.length} unshipped orders more than ${STALE_SPAN_DAYS} days apart: ${list}. `
+          + 'An older one has probably shipped already. Paste the reference you mean, '
+          + 'or clear the old wave with `/shipall before:`.',
+        );
         continue;
       }
       orders = parcel;

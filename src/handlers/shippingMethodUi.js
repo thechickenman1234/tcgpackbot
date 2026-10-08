@@ -2,12 +2,7 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { config } from '../config.js';
 import { formatAud } from '../utils/permissions.js';
 import { buyerDetailsFromRow, getBuyer } from '../services/buyerService.js';
-import {
-  getOrderById,
-  getUnshippedOrdersForBuyer,
-  setCombinedShipping,
-  setShippingMethod,
-} from '../services/orderService.js';
+import { getOrderById, setShippingMethod } from '../services/orderService.js';
 import { buildPaymentEmbed } from '../services/paymentEmbed.js';
 import { SHIP_METHOD_PREFIX } from '../ui/customIds.js';
 
@@ -25,16 +20,11 @@ export function buildShippingMethodRow(orderId, buyerId = null) {
       .setStyle(ButtonStyle.Primary),
   ];
 
-  // Only worth offering when they already have something that hasn't gone out.
-  if (buyerId && getUnshippedOrdersForBuyer(buyerId, orderId).length) {
-    buttons.push(
-      new ButtonBuilder()
-        .setCustomId(`${SHIP_METHOD_PREFIX}combine:${orderId}`)
-        .setLabel('Combine with my other order — free')
-        .setStyle(ButtonStyle.Success),
-    );
-  }
-
+  // There used to be a third button here letting a buyer combine this
+  // order into a parcel they already had waiting, with no shipping
+  // charged. It made every order a special case at packing time and the
+  // zeroed shipping was impossible to reconcile afterwards. Every order
+  // now stands on its own.
   return new ActionRowBuilder().addComponents(...buttons);
 }
 
@@ -53,25 +43,19 @@ export async function handleShippingMethodButton(interaction) {
     return;
   }
 
-  let result;
-  let chosenLabel;
-
+  // Old combine buttons may still be sitting in threads from before the
+  // feature was removed, so answer them rather than failing silently.
   if (method === 'combine') {
-    const others = getUnshippedOrdersForBuyer(order.buyer_id, orderId);
-    if (!others.length) {
-      await interaction.reply({
-        content: 'Nothing left to combine with — your other order has already shipped. Pick Standard or Express.',
-        ephemeral: true,
-      });
-      return;
-    }
-    const parcel = others[0];
-    result = setCombinedShipping(orderId, parcel.reference_code);
-    chosenLabel = `Combined with \`${parcel.reference_code}\` — no shipping charged`;
-  } else {
-    result = setShippingMethod(orderId, method);
-    chosenLabel = method === 'express' ? 'Express' : 'Standard';
+    await interaction.reply({
+      content: 'Orders are no longer combined — each one is shipped and charged on its own. '
+        + 'Pick **Standard** or **Express**.',
+      ephemeral: true,
+    });
+    return;
   }
+
+  const result = setShippingMethod(orderId, method);
+  const chosenLabel = method === 'express' ? 'Express' : 'Standard';
 
   if (!result.ok) {
     await interaction.reply({

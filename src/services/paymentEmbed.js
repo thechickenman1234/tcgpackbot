@@ -34,6 +34,7 @@ export function buildPaymentEmbed(order, shipping) {
     const methodLabel = order.shipping_method === 'express' ? ' (Express)' : ' (Standard)';
     amountFields.push({ name: 'Shipping', value: `${formatAud(shippingCents)}${methodLabel}`, inline: true });
   } else if (order.combined_with) {
+    // Only ever appears on orders placed before combining was removed.
     amountFields.push({
       name: 'Shipping',
       value: `Free — packed with \`${order.combined_with}\``,
