@@ -853,6 +853,7 @@ async function handleShipAll(interaction) {
     .flatMap((value) => value.split(',').map((t) => t.trim().toLowerCase()))
     .filter(Boolean);
   const confirm = interaction.options.getBoolean('confirm') ?? false;
+  const before = interaction.options.getString('before');
   const paid = getAllPaidOrders();
 
   if (!paid.length) {
@@ -860,11 +861,27 @@ async function handleShipAll(interaction) {
     return;
   }
 
-  const keep = paid.filter((o) => {
+  if (!terms.length && !before) {
+    await interaction.editReply({
+      content: 'Give me either a product to **keep** or a date to work **before**, '
+        + 'otherwise this would mark every single waiting order as shipped.',
+    });
+    return;
+  }
+
+  // Anything claimed on or after the cutoff is a later wave and is left
+  // alone entirely, whatever product it is.
+  const cutoff = before ? melbourneToUtc(before, '00:00') : null;
+  const inScope = cutoff
+    ? paid.filter((o) => o.claimed_at && new Date(o.claimed_at) < cutoff)
+    : paid;
+  const later = paid.length - inScope.length;
+
+  const keep = inScope.filter((o) => {
     const name = o.product_name.toLowerCase();
     return terms.some((t) => name.includes(t));
   });
-  const ship = paid.filter((o) => !keep.includes(o));
+  const ship = inScope.filter((o) => !keep.includes(o));
   const except = terms.join('`, `');
 
   const summarise = (orders) => {
@@ -878,18 +895,23 @@ async function handleShipAll(interaction) {
   if (!confirm) {
     const lines = [
       `**Preview only — nothing has changed.**`,
+      before ? `Looking at orders claimed **before ${before}**.` : null,
       '',
       `Would mark **${ship.length}** order${ship.length === 1 ? '' : 's'} as shipped:`,
       ...summarise(ship),
       '',
       keep.length
         ? `Would leave **${keep.length}** alone (matched \`${except}\`):\n${summarise(keep).join('\n')}`
-        : `⚠️ Nothing matched \`${except}\` — **everything** would be marked shipped. Check the spelling.`,
+        : null,
+      later ? `Would leave **${later}** alone — claimed on or after ${before}.` : null,
+      !terms.length && !later && !before
+        ? '⚠️ Nothing is being held back — **everything** would be marked shipped.'
+        : null,
       '',
       `Every product currently waiting:\n${summarise(paid).join('\n')}`,
       '',
-      'Happy with that? Run it again with **confirm: True**. There is no undo.',
-    ];
+      'Happy with that? Run it again with **confirm: True**. There is no undo, but `/unship` puts one back.',
+    ].filter((l) => l !== null);
     await interaction.editReply({ content: lines.join('\n').slice(0, 1900) });
     return;
   }
@@ -910,7 +932,7 @@ async function handleShipAll(interaction) {
     `📦 Marked **${done}** order${done === 1 ? '' : 's'} as shipped.`,
     ...summarise(shipped),
     '',
-    `Left **${keep.length}** alone. Labels tab now shows only those.`,
+    `Left **${keep.length + later}** waiting. The Labels tab now shows only those.`,
     'Nothing was posted to any buyer thread.',
   ];
   await interaction.editReply({ content: lines.join('\n').slice(0, 1900) });
@@ -934,6 +956,21 @@ export async function handleAutocomplete(interaction) {
       }));
     await interaction.respond(choices);
     return;
+  }
+
+  if (interaction.commandName === 'shipall') {
+    // Same date list as the sale commands, but looking backwards.
+    const choices = [];
+    for (let i = 0; i < 90 && choices.length < 25; i += 1) {
+      const day = new Date(Date.now() - i * 86400000);
+      const label = new Intl.DateTimeFormat('en-AU', { timeZone: ZONE, weekday: 'short', day: 'numeric', month: 'short' }).format(day);
+      const value = new Intl.DateTimeFormat('en-CA', { timeZone: ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(day);
+      const pretty = i === 0 ? `${label} (today)` : label;
+      if (interaction.options.getFocused(true).name === 'before' && (pretty.toLowerCase().includes(typed) || value.includes(typed))) {
+        choices.push({ name: pretty, value });
+      }
+    }
+    if (choices.length) { await interaction.respond(choices); return; }
   }
 
   if (interaction.commandName === 'cancelsale') {

@@ -81,6 +81,10 @@ function labelRowsByBuyer(orders) {
       phone: buyer?.phone || '',
       reference,
       type: group.some((o) => o.shipping_method === 'express') ? 'EXPRESS' : 'STANDARD',
+      // Last column on purpose: the label printer reads the ones it knows
+      // by name and ignores the rest. This is here so you can see at a
+      // glance which wave a parcel belongs to.
+      claimed: (group.map((o) => o.claimed_at).filter(Boolean).sort()[0] || '').slice(0, 10),
     };
   });
 }

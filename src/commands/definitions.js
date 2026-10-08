@@ -256,9 +256,16 @@ export const commandDefinitions = [
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addStringOption((o) =>
       o
+        .setName('before')
+        .setDescription('Only touch orders claimed before this date — use this to clear an old wave')
+        .setRequired(false)
+        .setAutocomplete(true),
+    )
+    .addStringOption((o) =>
+      o
         .setName('keep')
         .setDescription('Product to leave alone — pick from the list')
-        .setRequired(true)
+        .setRequired(false)
         .setAutocomplete(true),
     )
     .addStringOption((o) =>
