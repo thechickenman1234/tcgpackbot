@@ -1797,14 +1797,31 @@ async function handleClaimed(interaction) {
     }
     const total = rows.reduce((n, r) => n + r.quantity, 0);
     const unpaid = rows.filter((r) => r.status === 'pending');
+    // Dates, because the same product sells in more than one wave and the
+    // name alone cannot tell an order from last month apart from tonight's.
     const lines = rows.map((r) => {
       const name = getBuyer(r.buyer_id)?.name || `<@${r.buyer_id}>`;
-      return `${r.status === 'pending' ? '⏳' : '✅'} ${name} — **${r.quantity}**`;
+      const when = r.claimed_at ? r.claimed_at.slice(0, 10) : 'unknown date';
+      return `${r.status === 'pending' ? '⏳' : '✅'} \`${when}\`  ${name} — **${r.quantity}**`;
     });
+
+    // Claims more than a week apart are almost certainly separate waves,
+    // and the older one is usually something that shipped but was never
+    // marked shipped.
+    const dates = rows.map((r) => r.claimed_at).filter(Boolean).sort();
+    const spanDays = dates.length
+      ? (new Date(dates[dates.length - 1]) - new Date(dates[0])) / 86400000
+      : 0;
+    const waveWarning = spanDays > 7
+      ? `\n\n⚠️ These claims span **${Math.round(spanDays)} days**, so there is more than one wave here. `
+        + 'Anything from the older batch that has already been posted needs `/shipped`, '
+        + 'or it will keep showing up on the Labels tab.'
+      : '';
     await interaction.editReply({
       content: `**${rows[0].product_name}** — order **${total}**${window}\n`
         + `${unpaid.length} buyer${unpaid.length === 1 ? '' : 's'} still to pay.\n\n`
-        + lines.join('\n').slice(0, 1700),
+        + lines.join('\n').slice(0, 1500)
+        + waveWarning,
     });
     return;
   }
