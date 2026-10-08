@@ -884,12 +884,19 @@ async function handleShipAll(interaction) {
   const ship = inScope.filter((o) => !keep.includes(o));
   const except = terms.join('`, `');
 
+  // Boxes first, orders in brackets. Counting orders alone read as a box
+  // count and made ten orders of four boxes look like ten boxes.
   const summarise = (orders) => {
     const byProduct = new Map();
     for (const o of orders) {
-      byProduct.set(o.product_name, (byProduct.get(o.product_name) || 0) + 1);
+      const row = byProduct.get(o.product_name) || { boxes: 0, orders: 0 };
+      row.boxes += o.quantity;
+      row.orders += 1;
+      byProduct.set(o.product_name, row);
     }
-    return [...byProduct.entries()].map(([name, n]) => `• ${n}x ${name}`);
+    return [...byProduct.entries()]
+      .sort((a, b) => b[1].boxes - a[1].boxes)
+      .map(([name, r]) => `• **${r.boxes}x ${name}** _(${r.orders} order${r.orders === 1 ? '' : 's'})_`);
   };
 
   if (!confirm) {
@@ -897,7 +904,8 @@ async function handleShipAll(interaction) {
       `**Preview only — nothing has changed.**`,
       before ? `Looking at orders claimed **before ${before}**.` : null,
       '',
-      `Would mark **${ship.length}** order${ship.length === 1 ? '' : 's'} as shipped:`,
+      `Would mark **${ship.reduce((n, o) => n + o.quantity, 0)} boxes** across `
+        + `**${ship.length}** order${ship.length === 1 ? '' : 's'} as shipped:`,
       ...summarise(ship),
       '',
       keep.length
@@ -929,7 +937,8 @@ async function handleShipAll(interaction) {
   pushToSheetInBackground(shipped, 'shipall');
 
   const lines = [
-    `📦 Marked **${done}** order${done === 1 ? '' : 's'} as shipped.`,
+    `📦 Marked **${shipped.reduce((n, o) => n + o.quantity, 0)} boxes** across `
+      + `**${done}** order${done === 1 ? '' : 's'} as shipped.`,
     ...summarise(shipped),
     '',
     `Left **${keep.length + later}** waiting. The Labels tab now shows only those.`,
