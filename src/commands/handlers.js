@@ -34,6 +34,7 @@ import {
   formatMelbourne,
   listPending,
   melbourneToUtc,
+  parseDate,
   readAttachments,
   saveAttachment,
   scheduleMessage,
@@ -1313,6 +1314,26 @@ async function handleEntries(interaction) {
  * rather than starting a competing one, which is how a two product night
  * gets set up without a second command.
  */
+/**
+ * The sale date as "YYYY-MM-DD", however it was entered.
+ *
+ * The sale commands do date arithmetic on this string (the day after, for a
+ * sale that runs past midnight), so a typed "sat" or "10/10" has to become a
+ * real date here, once, before anything splits it. Replies and returns null
+ * when it cannot be read.
+ */
+async function readSaleDate(interaction) {
+  const raw = interaction.options.getString('date', true);
+  const date = parseDate(raw);
+  if (!date) {
+    await interaction.reply({
+      content: `Could not read the date \`${raw}\`. Pick it from the dropdown, or type it like \`10/10\`.`,
+      ephemeral: true,
+    });
+  }
+  return date;
+}
+
 async function handleNewSale(interaction) {
   if (!isStaff(interaction.member)) {
     await interaction.reply({ content: 'Staff only.', ephemeral: true });
@@ -1322,7 +1343,8 @@ async function handleNewSale(interaction) {
   const name = interaction.options.getString('name', true).trim();
   const price = interaction.options.getNumber('price', true);
   const quantity = interaction.options.getInteger('quantity', true);
-  const date = interaction.options.getString('date', true);
+  const date = await readSaleDate(interaction);
+  if (!date) return;
   const shipping = interaction.options.getNumber('shipping');
   const limit = interaction.options.getInteger('limit');
 
@@ -1445,7 +1467,8 @@ async function handleScheduleSale(interaction) {
     return;
   }
 
-  const date = interaction.options.getString('date', true);
+  const date = await readSaleDate(interaction);
+  if (!date) return;
   const start = interaction.options.getString('start') || '20:00';
   const end = interaction.options.getString('end') || '00:00';
   const announce = interaction.options.getString('announce') || '19:00';

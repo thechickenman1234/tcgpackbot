@@ -76,10 +76,12 @@ function melbourneToday(offsetDays = 0) {
 }
 
 const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 
 /**
  * Reads a date however it was typed: "2026-10-10", "10/10", "10/10/2026",
- * "today", "tomorrow", "sat". Day first, because this is Australia.
+ * "10 Oct", "Sat, 10 Oct", "today", "tomorrow", "sat". Day first, because
+ * this is Australia.
  *
  * A day and month with no year means the next time that date comes round.
  * Returns "YYYY-MM-DD" or null.
@@ -97,10 +99,12 @@ export function parseDate(input) {
     return melbourneToday(ahead).iso;
   }
 
-  const dm = s.match(/^(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?$/);
+  // "10/10", "10-10-2026", or the way the dropdown shows it: "Sat, 10 Oct".
+  const dm = s.match(/^(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?$/)
+    || s.replace(/^[a-z]+,?\s+/, '').match(/^(\d{1,2})\s*([a-z]{3})[a-z]*\.?(?:\s+(\d{4}))?$/);
   if (dm) {
     const d = Number(dm[1]);
-    const mo = Number(dm[2]);
+    const mo = /^\d+$/.test(dm[2]) ? Number(dm[2]) : MONTHS.indexOf(dm[2]) + 1;
     if (d < 1 || d > 31 || mo < 1 || mo > 12) return null;
     const today = melbourneToday().iso;
     let y = dm[3] ? Number(dm[3]) : Number(today.slice(0, 4));
