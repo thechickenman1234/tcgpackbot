@@ -37,6 +37,7 @@ import {
   readAttachments,
   saveAttachment,
   scheduleMessage,
+  timeChoices,
 } from '../services/scheduleService.js';
 import {
   clearProductTiers,
@@ -1025,19 +1026,8 @@ export async function handleAutocomplete(interaction) {
       return;
     }
 
-    if (focused.name === 'start' || focused.name === 'end') {
-      const choices = [];
-      for (let h = 0; h < 24 && choices.length < 25; h += 1) {
-        for (const m of [0, 30]) {
-          const value = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-          const hour12 = h % 12 === 0 ? 12 : h % 12;
-          const label = `${hour12}:${String(m).padStart(2, '0')} ${h < 12 ? 'am' : 'pm'}`;
-          if (label.replace(/[:\s]/g, '').includes(typed.replace(/[:\s]/g, '')) || value.includes(typed)) {
-            if (choices.length < 25) choices.push({ name: label, value });
-          }
-        }
-      }
-      await interaction.respond(choices);
+    if (['start', 'end', 'time'].includes(focused.name)) {
+      await interaction.respond(timeChoices(typed));
       return;
     }
 
@@ -1056,22 +1046,6 @@ export async function handleAutocomplete(interaction) {
         const pretty = i === 0 ? `${label} (today)` : i === 1 ? `${label} (tomorrow)` : label;
         if (pretty.toLowerCase().includes(typed) || value.includes(typed)) {
           choices.push({ name: pretty, value });
-        }
-      }
-      await interaction.respond(choices);
-      return;
-    }
-
-    if (focused.name === 'time') {
-      const choices = [];
-      for (let h = 0; h < 24 && choices.length < 25; h += 1) {
-        for (const m of [0, 30]) {
-          const value = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-          const hour12 = h % 12 === 0 ? 12 : h % 12;
-          const label = `${hour12}:${String(m).padStart(2, '0')} ${h < 12 ? 'am' : 'pm'}`;
-          if (label.replace(/[:\s]/g, '').includes(typed.replace(/[:\s]/g, '')) || value.includes(typed)) {
-            if (choices.length < 25) choices.push({ name: label, value });
-          }
         }
       }
       await interaction.respond(choices);
@@ -1804,6 +1778,15 @@ async function handleEvent(interaction) {
   const image = interaction.options.getAttachment('image');
 
   const start = melbourneToUtc(date, time);
+  if (!start) {
+    // Echo back what arrived, so a screenshot of this says exactly what broke.
+    await interaction.reply({
+      content: `Could not read date \`${date}\` and time \`${time}\`. `
+        + 'Pick from the dropdowns, or type it like `10/10` and `8pm`.',
+      ephemeral: true,
+    });
+    return;
+  }
 
   // Deferred because the cover picture has to be fetched and uploaded again,
   // which on a big image is slower than Discord's three second reply window.

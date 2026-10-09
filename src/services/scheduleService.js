@@ -37,15 +37,127 @@ function offsetAt(utcMs) {
   return asIfUtc - utcMs;
 }
 
+const pad = (n) => String(n).padStart(2, '0');
+
+/**
+ * Reads a time however it was typed: "20:00", "8pm", "8 pm", "8:30pm", "2030".
+ *
+ * Discord sends the raw text whenever a dropdown has no match, so anything a
+ * person would reasonably type has to work here too, not only the dropdown
+ * values. Returns "HH:MM" or null.
+ */
+export function parseTime(input) {
+  const s = String(input ?? '').trim().toLowerCase().replace(/[\s.]/g, '');
+  const m = s.match(/^(\d{1,2})(?::?(\d{2}))?(am|pm|a|p)?$/);
+  if (!m) return null;
+
+  let h = Number(m[1]);
+  const mi = m[2] ? Number(m[2]) : 0;
+  if (mi > 59) return null;
+
+  if (m[3]) {
+    if (h < 1 || h > 12) return null;
+    if (m[3].startsWith('p') && h !== 12) h += 12;
+    if (m[3].startsWith('a') && h === 12) h = 0;
+  } else if (h > 23) {
+    return null;
+  }
+  return `${pad(h)}:${pad(mi)}`;
+}
+
+/** Today's date in Melbourne as "YYYY-MM-DD", plus its weekday 0-6. */
+function melbourneToday(offsetDays = 0) {
+  const day = new Date(Date.now() + offsetDays * 86400000);
+  const iso = new Intl.DateTimeFormat('en-CA', {
+    timeZone: ZONE, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(day);
+  const weekday = new Date(`${iso}T12:00:00Z`).getUTCDay();
+  return { iso, weekday };
+}
+
+const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
+/**
+ * Reads a date however it was typed: "2026-10-10", "10/10", "10/10/2026",
+ * "today", "tomorrow", "sat". Day first, because this is Australia.
+ *
+ * A day and month with no year means the next time that date comes round.
+ * Returns "YYYY-MM-DD" or null.
+ */
+export function parseDate(input) {
+  const s = String(input ?? '').trim().toLowerCase();
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  if (s === 'today' || s.endsWith('(today)')) return melbourneToday().iso;
+  if (s === 'tomorrow' || s.endsWith('(tomorrow)')) return melbourneToday(1).iso;
+
+  const wd = WEEKDAYS.findIndex((w) => s.startsWith(w));
+  if (wd >= 0 && /^[a-z]+$/.test(s)) {
+    const ahead = (wd - melbourneToday().weekday + 7) % 7;
+    return melbourneToday(ahead).iso;
+  }
+
+  const dm = s.match(/^(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?$/);
+  if (dm) {
+    const d = Number(dm[1]);
+    const mo = Number(dm[2]);
+    if (d < 1 || d > 31 || mo < 1 || mo > 12) return null;
+    const today = melbourneToday().iso;
+    let y = dm[3] ? Number(dm[3]) : Number(today.slice(0, 4));
+    if (y < 100) y += 2000;
+    let iso = `${y}-${pad(mo)}-${pad(d)}`;
+    if (!dm[3] && iso < today) iso = `${y + 1}-${pad(mo)}-${pad(d)}`;
+    return iso;
+  }
+
+  return null;
+}
+
+/**
+ * The time dropdown.
+ *
+ * Discord shows at most 25 choices. Half-hours from midnight ran out at
+ * 12pm, so with nothing typed no evening time was ever on the list. Empty
+ * now shows every hour on the hour, which is 24 and fits.
+ *
+ * Typed text is matched against the forms people actually type, so "8pm",
+ * "8 pm", "830" and "20" all find something instead of an empty list.
+ */
+export function timeChoices(typed) {
+  const q = String(typed ?? '').toLowerCase().replace(/[\s:.]/g, '');
+  const choices = [];
+
+  for (let h = 0; h < 24; h += 1) {
+    for (const m of [0, 30]) {
+      if (!q && m) continue;
+      const h12 = h % 12 === 0 ? 12 : h % 12;
+      const ampm = h < 12 ? 'am' : 'pm';
+      const label = `${h12}:${pad(m)} ${ampm}`;
+      const value = `${pad(h)}:${pad(m)}`;
+      const keys = [`${h12}${pad(m)}${ampm}`, `${pad(h)}${pad(m)}`, `${h}${pad(m)}`];
+      if (!m) keys.push(`${h12}${ampm}`);
+      if (!q || keys.some((k) => k.startsWith(q))) choices.push({ name: label, value });
+    }
+  }
+  return choices.slice(0, 25);
+}
+
 /**
  * Turns "2026-10-05" and "20:00" in Melbourne into a real UTC instant.
+ *
+ * Also takes looser forms ("10/10", "8pm") through parseDate and parseTime,
+ * since Discord passes typed text straight through when a dropdown is empty.
  *
  * Run twice: the first pass measures the offset using a guess that may sit
  * on the wrong side of a daylight saving change, the second corrects it.
  */
 export function melbourneToUtc(dateStr, timeStr) {
-  const [y, mo, d] = dateStr.split('-').map(Number);
-  const [h, mi] = timeStr.split(':').map(Number);
+  const date = parseDate(dateStr);
+  const time = parseTime(timeStr);
+  if (!date || !time) return null;
+
+  const [y, mo, d] = date.split('-').map(Number);
+  const [h, mi] = time.split(':').map(Number);
   if ([y, mo, d, h, mi].some((n) => !Number.isFinite(n))) return null;
 
   let utc = Date.UTC(y, mo - 1, d, h, mi);
