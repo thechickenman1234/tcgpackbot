@@ -529,6 +529,49 @@ export const commandDefinitions = [
     ),
 
   new SlashCommandBuilder()
+    .setName('event')
+    .setDescription('Put an event at the top of the server, Melbourne time')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addStringOption((o) =>
+      o
+        .setName('title')
+        .setDescription('What it is called, e.g. Claim Sale: Mega Brave')
+        .setRequired(true)
+        .setMaxLength(100),
+    )
+    .addStringOption((o) =>
+      o.setName('date').setDescription('Pick a date').setRequired(true).setAutocomplete(true),
+    )
+    .addStringOption((o) =>
+      o.setName('time').setDescription('Pick a start time').setRequired(true).setAutocomplete(true),
+    )
+    .addIntegerOption((o) =>
+      o
+        .setName('hours')
+        .setDescription('How long it runs (default 4)')
+        .setRequired(false)
+        .setMinValue(1)
+        .setMaxValue(168),
+    )
+    .addStringOption((o) =>
+      o
+        .setName('where')
+        .setDescription('Shown under the title (default: Discord)')
+        .setRequired(false)
+        .setMaxLength(100),
+    )
+    .addStringOption((o) =>
+      o
+        .setName('details')
+        .setDescription('Longer description people see when they open it')
+        .setRequired(false)
+        .setMaxLength(1000),
+    )
+    .addAttachmentOption((o) =>
+      o.setName('image').setDescription('Cover picture').setRequired(false),
+    ),
+
+  new SlashCommandBuilder()
     .setName('claimed')
     .setDescription('How many of each product to order — includes claims that have not been paid yet')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)

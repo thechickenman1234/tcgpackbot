@@ -18,6 +18,7 @@ import {
 import { buildBoardEmbed } from '../services/giveawayBoard.js';
 import { getTotalsBySource, logManualOrder } from '../services/manualOrderService.js';
 import { backfillBuyerRole, grantBuyerRole } from '../services/buyerRoleService.js';
+import { createScheduledEvent, eventUrl } from '../services/discordEventService.js';
 import {
   addProductToSale,
   cancelScheduledSale,
@@ -1007,7 +1008,7 @@ export async function handleAutocomplete(interaction) {
     return;
   }
 
-  if (['schedulesale', 'newsale', 'schedule'].includes(interaction.commandName)) {
+  if (['schedulesale', 'newsale', 'schedule', 'event'].includes(interaction.commandName)) {
     const focused = interaction.options.getFocused(true);
 
     // /newsale calls it "name" because it also creates the product. You can
@@ -1788,6 +1789,47 @@ async function handleSchedule(interaction) {
   });
 }
 
+async function handleEvent(interaction) {
+  if (!isStaff(interaction.member)) {
+    await interaction.reply({ content: 'Staff only.', ephemeral: true });
+    return;
+  }
+
+  const title = interaction.options.getString('title', true);
+  const date = interaction.options.getString('date', true);
+  const time = interaction.options.getString('time', true);
+  const hours = interaction.options.getInteger('hours') ?? 4;
+  const where = interaction.options.getString('where') || 'Discord';
+  const details = interaction.options.getString('details');
+  const image = interaction.options.getAttachment('image');
+
+  const start = melbourneToUtc(date, time);
+
+  // Deferred because the cover picture has to be fetched and uploaded again,
+  // which on a big image is slower than Discord's three second reply window.
+  await interaction.deferReply({ ephemeral: true });
+
+  const result = await createScheduledEvent(interaction.guild, {
+    title, start, hours, where, details, image,
+  });
+
+  if (!result.ok) {
+    await interaction.editReply({ content: result.reason });
+    return;
+  }
+
+  const startUnix = Math.floor(start.getTime() / 1000);
+
+  await interaction.editReply({
+    content: `📅 **${title}** is up.\n`
+      + `Starts **${formatMelbourne(start.toISOString())}** (<t:${startUnix}:R>), `
+      + `runs ${hours} hour${hours === 1 ? '' : 's'} until **${formatMelbourne(result.end.toISOString())}**.\n`
+      + (result.imageSkipped ? '⚠️ Could not fetch that picture, so it has no cover image.\n' : '')
+      + `\n${eventUrl(interaction.guild.id, result.event.id)}\n`
+      + '\nIt now shows at the top of the server. Edit or delete it there.',
+  });
+}
+
 async function handleScheduled(interaction) {
   if (!isStaff(interaction.member)) {
     await interaction.reply({ content: 'Staff only.', ephemeral: true });
@@ -1993,6 +2035,8 @@ export async function handleSlashCommand(interaction) {
       return handleScheduled(interaction);
     case 'unschedule':
       return handleUnschedule(interaction);
+    case 'event':
+      return handleEvent(interaction);
     case 'claimed':
       return handleClaimed(interaction);
     case 'giveaway':
