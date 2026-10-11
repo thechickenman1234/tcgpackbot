@@ -94,14 +94,62 @@ export function isSheetConfigured() {
 }
 
 /**
+ * Orders per request on a big push.
+ *
+ * The script reads and writes each Sales row on its own, so a request's run
+ * time grows with the number of orders in it. A full /sync of ~300 orders ran
+ * past 40 seconds and Google answered with a 404 page instead of the result.
+ * Fifty keeps every request to a few seconds, and because Sales is matched on
+ * Order Ref, a batch that fails can simply be sent again.
+ */
+const SALES_BATCH = 50;
+
+/**
+ * Every push waits for the one before it.
+ *
+ * Several /paid in a row used to fire overlapping requests, each one wiping
+ * and rewriting the Labels tab while the others were mid-write, and they
+ * failed together with the same 404. One at a time costs a few seconds and
+ * removes the overlap entirely.
+ */
+let queue = Promise.resolve();
+
+/**
  * Sends the given orders to the Sales tab and rebuilds Labels from whatever
  * is currently paid and unshipped. Throws if the sheet rejects the push.
+ *
+ * Big pushes go in batches. Each batch carries the full label and product
+ * lists, because the script rebuilds those tabs from whatever each request
+ * contains and an empty list would wipe them.
  */
-export async function pushToSheet(orders) {
+export function pushToSheet(orders) {
+  const run = queue.then(() => pushInBatches(orders));
+  queue = run.catch(() => {});
+  return run;
+}
+
+async function pushInBatches(orders) {
   if (!isSheetConfigured()) {
     throw new Error('SHEET_URL and SHEET_SECRET are not set');
   }
 
+  let salesRows = 0;
+  let last = null;
+  for (let i = 0; i < Math.max(orders.length, 1); i += SALES_BATCH) {
+    const batch = orders.slice(i, i + SALES_BATCH);
+    try {
+      last = await pushOnce(batch);
+    } catch (err) {
+      // Say how far it got, so a failure halfway is not mistaken for nothing.
+      if (i > 0) err.message = `${err.message} (the first ${i} of ${orders.length} orders did sync)`;
+      throw err;
+    }
+    salesRows += last.salesRows;
+  }
+  return { ...last, salesRows };
+}
+
+async function pushOnce(orders) {
   const payload = {
     secret: config.sheetSecret,
     orders: orders.map(salesRow),
