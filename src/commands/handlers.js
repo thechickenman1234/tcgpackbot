@@ -19,6 +19,8 @@ import { buildBoardEmbed } from '../services/giveawayBoard.js';
 import { getTotalsBySource, logManualOrder } from '../services/manualOrderService.js';
 import { backfillBuyerRole, grantBuyerRole } from '../services/buyerRoleService.js';
 import { createScheduledEvent, eventUrl } from '../services/discordEventService.js';
+import { applyTrackingPaste, postTrackingToThread, trackingReply } from '../services/trackingService.js';
+import { postShippingPanel } from '../handlers/shippingPanel.js';
 import {
   addProductToSale,
   cancelScheduledSale,
@@ -488,60 +490,6 @@ async function handleShipped(interaction) {
   });
 }
 
-/** Tell the buyer their tracking number in their own ticket. */
-async function postTrackingToThread(client, order) {
-  if (!order.thread_id || !order.tracking_code) return false;
-  try {
-    const thread = await client.channels.fetch(order.thread_id);
-    await thread.send(
-      `<@${order.buyer_id}> 📦 **${order.quantity}x ${order.product_name}** is on its way.\n`
-      + `Tracking: \`${order.tracking_code}\`\n`
-      + `Track it at https://auspost.com.au/mypost/track/search?id=${order.tracking_code}`,
-    );
-    return true;
-  } catch (err) {
-    console.error(`Failed to post tracking to thread ${order.thread_id}:`, err);
-    return false;
-  }
-}
-
-/**
- * Which of a buyer's unshipped orders a single tracking code should cover.
- *
- * A name match can turn up orders that were never going in the same box.
- * The common case is an order that was posted weeks ago but never marked
- * shipped here, so it still reads as awaiting a parcel — fanning a code
- * across those messages people about deliveries they already have.
- *
- * So we only fan out when the buyer actually combined the orders, which
- * records the parcel it joined in combined_with. One anchor order with
- * everything else pointing at it is a parcel. Anything else is a guess,
- * and returns null so the caller can ask for an explicit reference.
- */
-const STALE_SPAN_DAYS = 14;
-
-function ordersInOneParcel(orders) {
-  if (orders.length <= 1) return orders;
-
-  // The Labels tab prints one label per buyer, so everything a buyer has
-  // waiting goes in the one parcel and shares its tracking code. That is
-  // true now that orders are never combined - the grouping happens at
-  // packing time rather than being something the buyer opted into.
-  const dates = orders.map((o) => o.claimed_at).filter(Boolean).sort();
-  if (dates.length < 2) return orders;
-
-  const spanDays = (new Date(dates[dates.length - 1]) - new Date(dates[0])) / 86400000;
-
-  // Weeks apart is not one parcel, it is an older order that went out and
-  // was never marked shipped. Messaging that buyer about a parcel they
-  // received last month is the exact mistake this guard exists to stop.
-  return spanDays > STALE_SPAN_DAYS ? null : orders;
-}
-
-/**
- * Bulk tracking. Paste "REF CODE" pairs, one per line or comma separated.
- * Several orders can share a tracking code when they ship in one parcel.
- */
 async function handleTracking(interaction) {
   if (!isStaff(interaction.member)) {
     await interaction.reply({ content: 'Staff only.', ephemeral: true });
@@ -549,80 +497,14 @@ async function handleTracking(interaction) {
   }
   await interaction.deferReply({ ephemeral: true });
 
-  // Each line is "<who>: <tracking>". <who> is a customer name straight off
-  // the label printer, or an order reference if you'd rather be precise.
-  const entries = interaction.options.getString('paste', true)
-    .split(/[\n;]+/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const m = line.match(/^(.*?)[\s:,=]+([A-Za-z0-9-]{8,})\s*$/);
-      return m ? { who: m[1].trim(), code: m[2].trim() } : null;
-    })
-    .filter(Boolean);
-
-  const done = [];
-  const failed = [];
-  const synced = [];
-
-  for (const { who, code } of entries) {
-    let orders;
-
-    if (/^TCG-[0-9A-Z]{6}$/i.test(who)) {
-      const order = getOrderByReference(who.toUpperCase());
-      orders = order ? [order] : [];
-    } else {
-      const buyers = findBuyersByName(who);
-      if (buyers.length > 1) {
-        failed.push(`${who} — ${buyers.length} buyers share that name, use the order reference`);
-        continue;
-      }
-      orders = buyers.length ? getPaidOrdersForBuyer(buyers[0].discord_id) : [];
-
-      const parcel = ordersInOneParcel(orders);
-      if (!parcel) {
-        const list = orders
-          .map((o) => `\`${o.reference_code}\`${o.paid_at ? ` (${o.paid_at.slice(0, 10)})` : ''}`)
-          .join(', ');
-        failed.push(
-          `${who} — ${orders.length} unshipped orders more than ${STALE_SPAN_DAYS} days apart: ${list}. `
-          + 'An older one has probably shipped already. Paste the reference you mean, '
-          + 'or clear the old wave with `/shipall before:`.',
-        );
-        continue;
-      }
-      orders = parcel;
-    }
-
-    if (!orders.length) {
-      failed.push(`${who} — nothing awaiting shipping`);
-      continue;
-    }
-
-    // One parcel can hold several orders, so they all get the same code.
-    for (const order of orders) {
-      const updated = order.status === 'paid'
-        ? markShipped(order.id, code).order
-        : setTrackingCode(order.id, code);
-      await postTrackingToThread(interaction.client, updated);
-      synced.push(updated);
-    }
-    const what = orders.map((o) => o.reference_code).join(', ');
-    done.push(`${who} — ${code}${orders.length > 1 ? ` (${orders.length} orders: ${what})` : ''}`);
-  }
+  // Same logic as the Add tracking button, so the two can never drift apart.
+  const result = await applyTrackingPaste(interaction.client, interaction.options.getString('paste', true));
 
   // One push for the whole paste rather than one per parcel: the Labels tab
   // is rebuilt on every call, so batching keeps it to a single rewrite.
-  pushToSheetInBackground(synced, 'tracking');
+  pushToSheetInBackground(result.synced, 'tracking');
 
-  const parcels = done.length;
-  const lines = [
-    `📦 Tracking sent for **${parcels}** parcel${parcels === 1 ? '' : 's'}.`,
-    ...done.map((d) => `• ${d}`),
-  ];
-  if (failed.length) lines.push('', `⚠️ **${failed.length} skipped:**`, ...failed.map((f) => `• ${f}`));
-
-  await interaction.editReply({ content: lines.join('\n').slice(0, 1900) });
+  await interaction.editReply({ content: trackingReply(result) });
 }
 
 async function handleCancel(interaction) {
@@ -836,7 +718,7 @@ async function handleSync(interaction) {
     const result = await pushToSheet(orders);
     await interaction.editReply({
       content: `📊 Synced **${result.salesRows}** order${result.salesRows === 1 ? '' : 's'} to the Sales tab.\n`
-        + `🏷️ Labels tab rebuilt with **${result.labelRows}** parcel${result.labelRows === 1 ? '' : 's'} waiting to ship.\n`
+        + `🏷️ Labels tab rebuilt with **${result.labelRows}** parcel${result.labelRows === 1 ? '' : 's'} from your last printed batch.\n`
         + `📦 Products tab rebuilt with **${result.productRows ?? 0}** product${result.productRows === 1 ? '' : 's'} — check the Left column.`,
     });
   } catch (err) {
@@ -957,7 +839,7 @@ async function handleShipAll(interaction) {
       + `**${done}** order${done === 1 ? '' : 's'} as shipped.`,
     ...summarise(shipped),
     '',
-    `Left **${keep.length + later}** waiting. The Labels tab now shows only those.`,
+    `Left **${keep.length + later}** waiting.`,
     'Nothing was posted to any buyer thread.',
   ];
   await interaction.editReply({ content: lines.join('\n').slice(0, 1900) });
@@ -2043,6 +1925,8 @@ export async function handleSlashCommand(interaction) {
       return handleUnschedule(interaction);
     case 'event':
       return handleEvent(interaction);
+    case 'shippingpanel':
+      return postShippingPanel(interaction);
     case 'claimed':
       return handleClaimed(interaction);
     case 'giveaway':

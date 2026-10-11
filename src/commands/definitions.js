@@ -529,6 +529,11 @@ export const commandDefinitions = [
     ),
 
   new SlashCommandBuilder()
+    .setName('shippingpanel')
+    .setDescription('Post the shipping buttons here: print labels, mark posted, add tracking')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+
+  new SlashCommandBuilder()
     .setName('event')
     .setDescription('Put an event at the top of the server, Melbourne time')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)

@@ -1,6 +1,6 @@
 import { config } from '../config.js';
 import { getBuyer } from './buyerService.js';
-import { getAllPaidOrders } from './orderService.js';
+import { labelOrders } from './shippingService.js';
 import { listAllProducts } from './productService.js';
 
 /**
@@ -37,6 +37,30 @@ function salesRow(order) {
 }
 
 /**
+ * Railway variables pasted from somewhere else can carry stray whitespace.
+ * FROM_CITY and FROM_STATE arrived with a leading tab, which went straight
+ * onto every label as "	Canterbury".
+ */
+function clean(value) {
+  return String(value ?? '').trim();
+}
+
+function csvEscape(value) {
+  const str = String(value ?? '');
+  return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+}
+
+/**
+ * The same rows as the Labels tab, as a file. Columns come from the rows
+ * themselves so the file and the tab can never disagree about the layout.
+ */
+export function labelRowsToCsv(rows) {
+  if (!rows.length) return '';
+  const header = Object.keys(rows[0]);
+  return [header.join(','), ...rows.map((r) => header.map((k) => csvEscape(r[k])).join(','))].join('\n');
+}
+
+/**
  * One label per buyer, not one per order.
  *
  * Somebody who claims twice in the same sale gets two orders but only ever
@@ -48,7 +72,7 @@ function salesRow(order) {
  * express, the parcel goes express rather than downgrading what someone
  * paid extra for.
  */
-function labelRowsByBuyer(orders) {
+export function labelRowsByBuyer(orders) {
   const byBuyer = new Map();
   for (const order of orders) {
     const existing = byBuyer.get(order.buyer_id);
@@ -71,13 +95,13 @@ function labelRowsByBuyer(orders) {
       to_city: buyer?.city || '',
       to_state: buyer?.state || '',
       to_postcode: buyer?.zip || '',
-      from_name: config.fromName,
-      from_business_name: config.fromBusinessName,
-      from_street: config.fromStreet,
-      from_street2: config.fromStreet2,
-      from_city: config.fromCity,
-      from_state: config.fromState,
-      from_postcode: config.fromPostcode,
+      from_name: clean(config.fromName),
+      from_business_name: clean(config.fromBusinessName),
+      from_street: clean(config.fromStreet),
+      from_street2: clean(config.fromStreet2),
+      from_city: clean(config.fromCity),
+      from_state: clean(config.fromState),
+      from_postcode: clean(config.fromPostcode),
       phone: buyer?.phone || '',
       reference,
       type: group.some((o) => o.shipping_method === 'express') ? 'EXPRESS' : 'STANDARD',
@@ -153,7 +177,7 @@ async function pushOnce(orders) {
   const payload = {
     secret: config.sheetSecret,
     orders: orders.map(salesRow),
-    labels: labelRowsByBuyer(getAllPaidOrders()),
+    labels: labelRowsByBuyer(labelOrders()),
     // The bot's product list is the master spelling. Stock Purchases picks
     // from it, so a purchase and a sale of the same thing finally match.
     products: listAllProducts().map((p) => p.name),

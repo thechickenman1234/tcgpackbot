@@ -95,6 +95,15 @@ export function initDatabase() {
       value TEXT NOT NULL
     );
 
+    -- One row per press of Print labels. Orders point at the batch they were
+    -- printed in, so "have I printed this one?" has a real answer.
+    CREATE TABLE IF NOT EXISTS label_batches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      created_by TEXT
+    );
+
     CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
     CREATE INDEX IF NOT EXISTS idx_orders_buyer ON orders(buyer_id);
     CREATE INDEX IF NOT EXISTS idx_orders_deadline ON orders(payment_deadline_at);
@@ -208,6 +217,11 @@ export function initDatabase() {
   // is left is never the cheaper move.
   ensureColumn('products', 'late_until', 'TEXT');
   ensureColumn('products', 'late_markup_percent', 'INTEGER NOT NULL DEFAULT 0');
+  // Which Print labels press an order went out on. Null means it has never
+  // been printed through the shipping buttons. Indexed after the column
+  // exists, since an older database only gets it from the line above.
+  ensureColumn('orders', 'label_batch_id', 'INTEGER');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_orders_batch ON orders(label_batch_id)');
 
   return db;
 }

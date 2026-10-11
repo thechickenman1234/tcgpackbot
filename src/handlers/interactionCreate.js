@@ -14,6 +14,7 @@ import {
   handleUpdateShippingButton,
 } from './shippingUi.js';
 import { SHIP_METHOD_PREFIX, handleShippingMethodButton } from './shippingMethodUi.js';
+import { SHIPPING_PREFIX, handleShippingPanel } from './shippingPanel.js';
 
 export async function handleInteractionCreate(interaction) {
   try {
@@ -26,6 +27,15 @@ export async function handleInteractionCreate(interaction) {
     // so this has to come before anything slower in the chain.
     if (interaction.isAutocomplete()) {
       await handleAutocomplete(interaction);
+      return;
+    }
+
+    // The shipping panel's buttons, dropdowns and pop-ups all share one prefix.
+    if (
+      (interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit())
+      && interaction.customId.startsWith(SHIPPING_PREFIX)
+    ) {
+      await handleShippingPanel(interaction);
       return;
     }
 
