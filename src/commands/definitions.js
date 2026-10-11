@@ -529,6 +529,20 @@ export const commandDefinitions = [
     ),
 
   new SlashCommandBuilder()
+    .setName('reel')
+    .setDescription('Just posted a video? Log it and get pinged in 24h to record how it did')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addStringOption((o) =>
+      o.setName('title').setDescription('What the video is, e.g. 3 things importing $150k').setRequired(true).setMaxLength(100),
+    )
+    .addStringOption((o) =>
+      o.setName('link').setDescription('Link to the post (optional)').setRequired(false).setMaxLength(300),
+    )
+    .addIntegerOption((o) =>
+      o.setName('hours').setDescription('When to remind you (default 24)').setRequired(false).setMinValue(1).setMaxValue(168),
+    ),
+
+  new SlashCommandBuilder()
     .setName('shippingpanel')
     .setDescription('Post the shipping buttons here: print labels, mark posted, add tracking')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),

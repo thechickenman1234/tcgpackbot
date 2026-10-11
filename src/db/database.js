@@ -95,6 +95,25 @@ export function initDatabase() {
       value TEXT NOT NULL
     );
 
+    -- One row per video posted. The bot pings 24 hours later to log how it
+    -- did, and the answers stay here for the next feedback loop.
+    CREATE TABLE IF NOT EXISTS reels (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      link TEXT,
+      channel_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      posted_at TEXT NOT NULL,
+      remind_at TEXT NOT NULL,
+      reminded_at TEXT,
+      reminder_message_id TEXT,
+      numbers TEXT,
+      worked TEXT,
+      didnt TEXT,
+      next_time TEXT,
+      logged_at TEXT
+    );
+
     -- One row per press of Print labels. Orders point at the batch they were
     -- printed in, so "have I printed this one?" has a real answer.
     CREATE TABLE IF NOT EXISTS label_batches (

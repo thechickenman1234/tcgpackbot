@@ -21,6 +21,7 @@ import { backfillBuyerRole, grantBuyerRole } from '../services/buyerRoleService.
 import { createScheduledEvent, eventUrl } from '../services/discordEventService.js';
 import { applyTrackingPaste, postTrackingToThread, trackingReply } from '../services/trackingService.js';
 import { postShippingPanel } from '../handlers/shippingPanel.js';
+import { handleReelCommand } from '../handlers/reelLoop.js';
 import {
   addProductToSale,
   cancelScheduledSale,
@@ -1927,6 +1928,8 @@ export async function handleSlashCommand(interaction) {
       return handleEvent(interaction);
     case 'shippingpanel':
       return postShippingPanel(interaction);
+    case 'reel':
+      return handleReelCommand(interaction);
     case 'claimed':
       return handleClaimed(interaction);
     case 'giveaway':

@@ -15,6 +15,7 @@ import {
 } from './shippingUi.js';
 import { SHIP_METHOD_PREFIX, handleShippingMethodButton } from './shippingMethodUi.js';
 import { SHIPPING_PREFIX, handleShippingPanel } from './shippingPanel.js';
+import { REEL_PREFIX, handleReelInteraction } from './reelLoop.js';
 
 export async function handleInteractionCreate(interaction) {
   try {
@@ -36,6 +37,12 @@ export async function handleInteractionCreate(interaction) {
       && interaction.customId.startsWith(SHIPPING_PREFIX)
     ) {
       await handleShippingPanel(interaction);
+      return;
+    }
+
+    // Video feedback loops: the Log results button and its pop-up.
+    if ((interaction.isButton() || interaction.isModalSubmit()) && interaction.customId.startsWith(REEL_PREFIX)) {
+      await handleReelInteraction(interaction);
       return;
     }
 
