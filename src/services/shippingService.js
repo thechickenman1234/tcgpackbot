@@ -1,6 +1,7 @@
 import { getDb } from '../db/database.js';
 import { getMeta, setMeta } from './metaService.js';
 import { getAllPaidOrders, markShipped } from './orderService.js';
+import { parcelKeyer } from './parcelService.js';
 
 /**
  * Label batches.
@@ -35,7 +36,7 @@ function groupByProduct(orders) {
     product: g.product,
     orders: g.orders,
     units: g.units,
-    parcels: g.buyers.size,
+    parcels: countParcels(g.orders),
     firstClaim: g.orders[0].claimed_at,
     lastClaim: g.orders[g.orders.length - 1].claimed_at,
   }));
@@ -163,8 +164,10 @@ export function markPosted(orderIds) {
   return shipped;
 }
 
+/** Same rule as the labels (parcelService), so a count always matches what prints. */
 export function countParcels(orders) {
-  return new Set(orders.map((o) => `${o.buyer_id}:${o.label_batch_id ?? ''}`)).size;
+  const key = parcelKeyer();
+  return new Set(orders.map(key)).size;
 }
 
 export function sumUnits(orders) {

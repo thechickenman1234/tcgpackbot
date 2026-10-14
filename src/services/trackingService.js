@@ -1,6 +1,7 @@
 import { getDb } from '../db/database.js';
 import { findBuyersByName } from './buyerService.js';
 import { getOrderByReference, markShipped, setTrackingCode } from './orderService.js';
+import { parcelKeyer } from './parcelService.js';
 
 /**
  * Pasted tracking codes, turned into shipped orders and buyer messages.
@@ -11,14 +12,6 @@ import { getOrderByReference, markShipped, setTrackingCode } from './orderServic
  */
 
 const DAY = 86400000;
-
-/**
- * Legacy guard for orders printed before label batches existed. Weeks apart
- * is not one parcel, it is an older order that went out and was never marked
- * shipped, and messaging that buyer about a parcel they received last month
- * is the exact mistake this exists to stop.
- */
-export const STALE_SPAN_DAYS = 14;
 
 /** Tell the buyer their tracking number in their own ticket. */
 export async function postTrackingToThread(client, order) {
@@ -37,14 +30,6 @@ export async function postTrackingToThread(client, order) {
   }
 }
 
-export function ordersInOneParcel(orders) {
-  if (orders.length <= 1) return orders;
-  const dates = orders.map((o) => o.claimed_at).filter(Boolean).sort();
-  if (dates.length < 2) return orders;
-  const spanDays = (new Date(dates[dates.length - 1]) - new Date(dates[0])) / DAY;
-  return spanDays > STALE_SPAN_DAYS ? null : orders;
-}
-
 /**
  * One line of a paste. A TCG reference anywhere in the line wins, because the
  * label printer often copies the reference column along with the name. The
@@ -59,73 +44,60 @@ export function parseTrackingLine(line) {
   return { who: m[1].trim().replace(/[\s:,=—-]+$/, ''), ref, code: m[2].trim() };
 }
 
-/** Everything still going in the same box as this order. */
-function parcelForOrder(order) {
-  if (!order.label_batch_id) return [order];
+/** Orders that could still take a code: waiting, or posted without one. */
+function awaitingCode(buyerId, alsoId = null, now = Date.now()) {
+  const recent = new Date(now - 7 * DAY).toISOString();
   return getDb().prepare(`
     SELECT * FROM orders
-    WHERE buyer_id = ? AND label_batch_id = ?
-      AND (status = 'paid' OR (status = 'shipped' AND tracking_code IS NULL) OR id = ?)
-    ORDER BY id
-  `).all(order.buyer_id, order.label_batch_id, order.id);
+    WHERE buyer_id = ?
+      AND (status = 'paid'
+        OR (status = 'shipped' AND tracking_code IS NULL AND label_batch_id IS NOT NULL AND shipped_at >= ?)
+        OR id = ?)
+    ORDER BY claimed_at ASC, id ASC
+  `).all(buyerId, recent, alsoId ?? -1);
+}
+
+/** Everything in the same box as this order: same buyer, batch and sale. */
+function parcelForOrder(order) {
+  const key = parcelKeyer();
+  const mine = key(order);
+  return awaitingCode(order.buyer_id, order.id).filter((o) => key(o) === mine);
 }
 
 /**
- * Which parcel a name means, when someone has more than one thing going on.
+ * Which parcel a name means, when someone has more than one on the go.
  *
  * In order of preference:
  *   1. a printed parcel already marked posted that has no code yet
  *   2. a printed parcel that hasn't been marked posted
- *   3. orders printed before batches existed, with the old date guard
+ *   3. a parcel never printed with the buttons
  *
- * Only one candidate at the first level that has any is a match. Two is a
- * real ambiguity and comes back as a question rather than a guess.
+ * Only one parcel at the first level that has any is a match. Two is a real
+ * question (two sales, two boxes) and comes back as one, never a guess.
  */
-function parcelForBuyer(buyerId, now = Date.now()) {
-  const recent = new Date(now - 7 * DAY).toISOString();
-  const rows = getDb().prepare(`
-    SELECT * FROM orders
-    WHERE buyer_id = ?
-      AND (status = 'paid'
-        OR (status = 'shipped' AND tracking_code IS NULL AND label_batch_id IS NOT NULL AND shipped_at >= ?))
-    ORDER BY claimed_at ASC, id ASC
-  `).all(buyerId, recent);
-
-  const groups = new Map();
-  for (const o of rows) {
-    const key = o.label_batch_id ?? 'none';
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(o);
+function parcelForBuyer(buyerId) {
+  const key = parcelKeyer();
+  const parcels = new Map();
+  for (const o of awaitingCode(buyerId)) {
+    const k = key(o);
+    if (!parcels.has(k)) parcels.set(k, []);
+    parcels.get(k).push(o);
   }
-
-  const printed = [...groups.entries()].filter(([k]) => k !== 'none');
+  const all = [...parcels.values()];
+  const printed = all.filter((os) => os[0].label_batch_id);
   const tiers = [
-    printed.filter(([, os]) => os.some((o) => o.status === 'shipped')),
-    printed.filter(([, os]) => os.some((o) => o.status === 'paid')),
+    printed.filter((os) => os.some((o) => o.status === 'shipped')),
+    printed.filter((os) => os.some((o) => o.status === 'paid')),
+    all.filter((os) => !os[0].label_batch_id),
   ];
   for (const tier of tiers) {
-    if (tier.length === 1) return { orders: tier[0][1] };
+    if (tier.length === 1) return { orders: tier[0] };
     if (tier.length > 1) {
-      return {
-        error: `printed in ${tier.length} batches (${tier.map(([k, os]) => `batch ${k}: ${os.map((o) => `\`${o.reference_code}\``).join(' ')}`).join('; ')}). Paste the reference you mean`,
-      };
+      const list = tier.map((os) => os.map((o) => `\`${o.reference_code}\``).join(' + ')).join('; ');
+      return { error: `has ${tier.length} separate parcels waiting (${list}). Paste the reference of the one you posted` };
     }
   }
-
-  const legacy = groups.get('none') || [];
-  if (!legacy.length) return { orders: [] };
-  const parcel = ordersInOneParcel(legacy);
-  if (!parcel) {
-    const list = legacy
-      .map((o) => `\`${o.reference_code}\`${o.paid_at ? ` (${o.paid_at.slice(0, 10)})` : ''}`)
-      .join(', ');
-    return {
-      error: `${legacy.length} unshipped orders more than ${STALE_SPAN_DAYS} days apart: ${list}. `
-        + 'An older one has probably gone out already. Paste the reference you mean, '
-        + 'or tick the old ones off with 📦 Mark posted',
-    };
-  }
-  return { orders: parcel };
+  return { orders: [] };
 }
 
 /**
