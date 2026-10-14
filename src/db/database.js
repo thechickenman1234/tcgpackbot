@@ -95,6 +95,30 @@ export function initDatabase() {
       value TEXT NOT NULL
     );
 
+    -- Every invoice the bot makes, so a number is never used twice and any
+    -- invoice can be looked up later.
+    CREATE TABLE IF NOT EXISTS invoices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      number TEXT NOT NULL UNIQUE,
+      bill_to TEXT NOT NULL,
+      items TEXT NOT NULL,
+      shipping_cents INTEGER NOT NULL DEFAULT 0,
+      shipping_label TEXT,
+      paid INTEGER NOT NULL DEFAULT 0,
+      note TEXT,
+      order_id INTEGER,
+      total_cents INTEGER NOT NULL,
+      created_by TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    -- The bill-to a buyer was last invoiced with (business name, ABN), so
+    -- their next invoice starts with it filled in.
+    CREATE TABLE IF NOT EXISTS invoice_billing (
+      buyer_id TEXT PRIMARY KEY,
+      bill_to TEXT NOT NULL
+    );
+
     -- One row per video posted. The bot pings 24 hours later to log how it
     -- did, and the answers stay here for the next feedback loop.
     CREATE TABLE IF NOT EXISTS reels (

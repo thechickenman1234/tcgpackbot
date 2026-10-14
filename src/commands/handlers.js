@@ -22,6 +22,7 @@ import { createScheduledEvent, eventUrl } from '../services/discordEventService.
 import { applyTrackingPaste, postTrackingToThread, trackingReply } from '../services/trackingService.js';
 import { postShippingPanel } from '../handlers/shippingPanel.js';
 import { handleReelCommand } from '../handlers/reelLoop.js';
+import { handleInvoiceCommand, invoiceAutocomplete } from '../handlers/invoiceMaker.js';
 import {
   addProductToSale,
   cancelScheduledSale,
@@ -961,6 +962,11 @@ export async function handleAutocomplete(interaction) {
         value: t.product_name.slice(0, 100),
       }));
     await interaction.respond(choices);
+    return;
+  }
+
+  if (interaction.commandName === 'invoice') {
+    await invoiceAutocomplete(interaction, typed);
     return;
   }
 
@@ -1930,6 +1936,8 @@ export async function handleSlashCommand(interaction) {
       return postShippingPanel(interaction);
     case 'reel':
       return handleReelCommand(interaction);
+    case 'invoice':
+      return handleInvoiceCommand(interaction);
     case 'claimed':
       return handleClaimed(interaction);
     case 'giveaway':

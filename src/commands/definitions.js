@@ -529,6 +529,18 @@ export const commandDefinitions = [
     ),
 
   new SlashCommandBuilder()
+    .setName('invoice')
+    .setDescription('Make an invoice PDF. Pick an order to fill it in, or leave it blank')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addStringOption((o) =>
+      o
+        .setName('order')
+        .setDescription('Search by buyer name (optional)')
+        .setRequired(false)
+        .setAutocomplete(true),
+    ),
+
+  new SlashCommandBuilder()
     .setName('reel')
     .setDescription('Just posted a video? Log it and get pinged in 24h to record how it did')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)

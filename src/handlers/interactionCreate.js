@@ -16,6 +16,7 @@ import {
 import { SHIP_METHOD_PREFIX, handleShippingMethodButton } from './shippingMethodUi.js';
 import { SHIPPING_PREFIX, handleShippingPanel } from './shippingPanel.js';
 import { REEL_PREFIX, handleReelInteraction } from './reelLoop.js';
+import { INVOICE_PREFIX, handleInvoiceInteraction } from './invoiceMaker.js';
 
 export async function handleInteractionCreate(interaction) {
   try {
@@ -37,6 +38,12 @@ export async function handleInteractionCreate(interaction) {
       && interaction.customId.startsWith(SHIPPING_PREFIX)
     ) {
       await handleShippingPanel(interaction);
+      return;
+    }
+
+    // The /invoice pop-up.
+    if (interaction.isModalSubmit() && interaction.customId.startsWith(INVOICE_PREFIX)) {
+      await handleInvoiceInteraction(interaction);
       return;
     }
 
