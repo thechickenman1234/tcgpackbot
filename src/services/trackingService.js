@@ -57,7 +57,7 @@ function awaitingCode(buyerId, alsoId = null, now = Date.now()) {
   `).all(buyerId, recent, alsoId ?? -1);
 }
 
-/** Everything in the same box as this order: same buyer, batch and sale. */
+/** Everything in the same box as this order (one order: see parcelService). */
 function parcelForOrder(order) {
   const key = parcelKeyer();
   const mine = key(order);
@@ -73,7 +73,7 @@ function parcelForOrder(order) {
  *   3. a parcel never printed with the buttons
  *
  * Only one parcel at the first level that has any is a match. Two is a real
- * question (two sales, two boxes) and comes back as one, never a guess.
+ * question (two orders, two boxes) and comes back as one, never a guess.
  */
 function parcelForBuyer(buyerId) {
   const key = parcelKeyer();

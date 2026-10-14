@@ -47,7 +47,7 @@ export async function handleShippingMethodButton(interaction) {
   // feature was removed, so answer them rather than failing silently.
   if (method === 'combine') {
     await interaction.reply({
-      content: 'Orders are no longer combined. Each one ships on its own, unless it is from the same claim sale. '
+      content: 'Orders are no longer combined. Each order ships in its own parcel and pays its own shipping. '
         + 'Pick **Standard** or **Express**.',
       ephemeral: true,
     });

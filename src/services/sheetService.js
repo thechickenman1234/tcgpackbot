@@ -62,11 +62,9 @@ export function labelRowsToCsv(rows) {
 }
 
 /**
- * One label per parcel.
- *
- * A parcel is one buyer's orders from one claim sale (see parcelService).
- * Orders from different sales get separate labels, so a box that is ready
- * never waits for stock from a later drop.
+ * One label per parcel, and a parcel is one order (see parcelService).
+ * Every order is boxed, labelled and charged shipping on its own, so a box
+ * that is ready never waits for anything else.
  *
  * Express wins for the whole parcel: if any order in it was paid as
  * express, the parcel goes express rather than downgrading what someone
