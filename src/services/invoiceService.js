@@ -69,22 +69,99 @@ export function parseShipping(text) {
 
 export const isYes = (text) => /^\s*(y|yes|paid|yep|yeah)\b/i.test(String(text || ''));
 
-/** What the pop-up starts with when an order was picked. */
-export function prefillFromOrder(orderId) {
-  const order = getOrderById(orderId);
-  if (!order) return null;
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+function melbourneParts(date) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
+    timeZone: ZONE, year: 'numeric', month: 'numeric', day: 'numeric',
+  }).formatToParts(date).map((x) => [x.type, Number(x.value)]));
+  return { y: p.year, m: p.month, d: p.day };
+}
+
+/** "29/9/2026", in Melbourne, for the date box. */
+export function dateShort(date) {
+  const { y, m, d } = melbourneParts(date);
+  return `${d}/${m}/${y}`;
+}
+
+/**
+ * The invoice date box: "today", "29/9/2026", "29/9", "29-09-26", "29 Sep 2026"
+ * or "2026-09-29". Day first. No year means this year, because an invoice
+ * date is usually now or a few days ago, never next year. Returns a Date at
+ * midday UTC, which is the same calendar day in Melbourne, or null.
+ */
+export function parseInvoiceDate(text) {
+  const t = String(text || '').trim().toLowerCase();
+  if (!t || t === 'today') return new Date();
+  let y;
+  let m;
+  let d;
+  let hit = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (hit) [, y, m, d] = hit.map(Number);
+  hit = hit || t.match(/^(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2,4}))?$/);
+  if (hit && d === undefined) [d, m, y] = [Number(hit[1]), Number(hit[2]), hit[3] ? Number(hit[3]) : undefined];
+  if (!hit) {
+    const w = t.replace(/^[a-z]+,?\s+/, '').match(/^(\d{1,2})\s*([a-z]{3})[a-z]*\.?(?:\s+(\d{2,4}))?$/);
+    if (!w || !MONTHS.includes(w[2])) return null;
+    [d, m, y] = [Number(w[1]), MONTHS.indexOf(w[2]) + 1, w[3] ? Number(w[3]) : undefined];
+  }
+  if (y === undefined) y = melbourneParts(new Date()).y;
+  if (y < 100) y += 2000;
+  const date = new Date(Date.UTC(y, m - 1, d, 12));
+  // Rejects 31/2 and friends, which Date would quietly roll into March.
+  if (date.getUTCFullYear() !== y || date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d) return null;
+  return date;
+}
+
+const plain = (centsValue) => (centsValue / 100).toFixed(2).replace(/\.00$/, '');
+
+/** What an order looks like on an invoice. Shared by the pop-up and /paid. */
+function orderDetails(order) {
   const buyer = getBuyer(order.buyer_id);
   const saved = getDb().prepare('SELECT bill_to FROM invoice_billing WHERE buyer_id = ?').get(order.buyer_id);
   const product = getProductById(order.product_id);
   const name = product?.display_name?.trim() || order.product_name;
-  const unit = (order.unit_price_cents / 100).toFixed(2).replace(/\.00$/, '');
+  const method = order.shipping_method || 'standard';
+  return {
+    billTo: saved?.bill_to || buyer?.name || '',
+    item: { qty: order.quantity, description: name, unitCents: order.unit_price_cents },
+    itemLine: `${order.quantity} x ${name} @ ${plain(order.unit_price_cents)}`,
+    shipping: { cents: order.shipping_cents, label: `Shipping (${method})` },
+    shippingLine: `${method} ${plain(order.shipping_cents)}`,
+    note: `Order ${order.reference_code}`,
+    paid: ['paid', 'shipped', 'archived'].includes(order.status),
+  };
+}
+
+/** What the pop-up starts with when an order was picked. */
+export function prefillFromOrder(orderId) {
+  const order = getOrderById(orderId);
+  if (!order) return null;
+  const o = orderDetails(order);
   return {
     order,
-    billTo: saved?.bill_to || buyer?.name || '',
-    items: `${order.quantity} x ${name} @ ${unit}`,
-    shipping: `${order.shipping_method || 'standard'} ${(order.shipping_cents / 100).toFixed(2).replace(/\.00$/, '')}`,
-    paid: ['paid', 'shipped', 'archived'].includes(order.status) ? 'yes' : 'no',
-    note: `Order ${order.reference_code}`,
+    billTo: o.billTo,
+    items: o.itemLine,
+    shipping: o.shippingLine,
+    paid: o.paid ? 'yes' : 'no',
+    // A paid order is invoiced on the day it was paid.
+    date: dateShort(o.paid && order.paid_at ? new Date(order.paid_at) : new Date()),
+  };
+}
+
+/**
+ * Everything an invoice for a just-paid order needs, with no typing: used by
+ * /paid to drop a PAID invoice into the buyer's ticket.
+ */
+export function paidInvoiceFor(order, createdBy = null) {
+  const o = orderDetails(order);
+  const issued = order.paid_at ? new Date(order.paid_at) : new Date();
+  const number = recordInvoice({
+    billTo: o.billTo, items: [o.item], shipping: o.shipping, paid: true, note: o.note,
+    orderId: order.id, createdBy, issuedOn: issued,
+  });
+  return {
+    number, issued, billTo: o.billTo.split('\n').filter(Boolean), items: [o.item], shipping: o.shipping, note: o.note,
   };
 }
 
@@ -93,7 +170,7 @@ export function prefillFromOrder(orderId) {
  * at once can never share a number. Remembers the bill-to for that buyer, so
  * the next invoice for them comes pre-filled with their ABN or business name.
  */
-export function recordInvoice({ billTo, items, shipping, paid, note, orderId, createdBy }) {
+export function recordInvoice({ billTo, items, shipping, paid, note, orderId, createdBy, issuedOn = new Date() }) {
   const db = getDb();
   const run = db.transaction(() => {
     const start = Number(process.env.INVOICE_START || 3);
@@ -102,10 +179,10 @@ export function recordInvoice({ billTo, items, shipping, paid, note, orderId, cr
     const number = `INV-${String(next).padStart(4, '0')}`;
     const total = items.reduce((s, i) => s + i.qty * i.unitCents, 0) + shipping.cents;
     db.prepare(`
-      INSERT INTO invoices (number, bill_to, items, shipping_cents, shipping_label, paid, note, order_id, total_cents, created_by, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO invoices (number, bill_to, items, shipping_cents, shipping_label, paid, note, order_id, total_cents, created_by, created_at, issued_on)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(number, billTo, JSON.stringify(items), shipping.cents, shipping.label, paid ? 1 : 0,
-      note || null, orderId || null, total, createdBy || null, new Date().toISOString());
+      note || null, orderId || null, total, createdBy || null, new Date().toISOString(), issuedOn.toISOString());
     if (orderId) {
       const order = getOrderById(orderId);
       if (order) {

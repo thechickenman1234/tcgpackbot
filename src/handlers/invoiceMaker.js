@@ -7,11 +7,15 @@ import {
 } from 'discord.js';
 import { isStaff } from '../utils/permissions.js';
 import { invoicePdf, money } from '../services/invoicePdf.js';
+import { getOrderById } from '../services/orderService.js';
 import {
   dateLong,
+  dateShort,
   invoiceSender,
   invoiceableOrders,
   isYes,
+  paidInvoiceFor,
+  parseInvoiceDate,
   parseItems,
   parseShipping,
   prefillFromOrder,
@@ -67,12 +71,32 @@ export async function handleInvoiceCommand(interaction) {
         field('shipping', 'Shipping (e.g. 10, or express 10)', {
           value: pre?.shipping, placeholder: 'express 10', required: false, max: 40,
         }),
-        field('paid', 'Already paid? yes or no', { value: pre?.paid || 'no', max: 5 }),
-        field('note', 'Note on the invoice (optional)', {
-          value: pre?.note, placeholder: 'Order TCG-ABC123', required: false, max: 200,
+        field('date', 'Invoice date (e.g. 29/9/2026, or today)', {
+          value: pre?.date || dateShort(new Date()), placeholder: '29/9/2026', max: 20,
         }),
+        field('paid', 'Already paid? yes or no', { value: pre?.paid || 'no', max: 5 }),
       ),
   );
+}
+
+/** Builds the PDF for a saved invoice. Unpaid invoices are due a week after their date. */
+function renderPdf({ number, issued, paid, billTo, items, shipping, note }) {
+  const { from, payment } = invoiceSender();
+  const due = new Date(issued.getTime() + DUE_DAYS * 86400000);
+  const out = invoicePdf({
+    number,
+    issued: dateLong(issued),
+    due: dateLong(due),
+    paidOn: paid ? dateLong(issued) : null,
+    from,
+    billTo,
+    items,
+    shippingCents: shipping.cents,
+    shippingLabel: shipping.label,
+    note,
+    payment,
+  });
+  return { ...out, due };
 }
 
 async function makeInvoice(interaction, orderId) {
@@ -80,9 +104,13 @@ async function makeInvoice(interaction, orderId) {
   const { items, bad } = parseItems(interaction.fields.getTextInputValue('items'));
   const shipping = parseShipping(interaction.fields.getTextInputValue('shipping'));
   const paid = isYes(interaction.fields.getTextInputValue('paid'));
-  const note = interaction.fields.getTextInputValue('note').trim();
+  const issued = parseInvoiceDate(interaction.fields.getTextInputValue('date'));
+  // Picked from an order: say which one on the invoice, without a box for it.
+  const order = Number(orderId) ? getOrderById(orderId) : null;
+  const note = order ? `Order ${order.reference_code}` : '';
 
   const problems = [];
+  if (!issued) problems.push('The **date** should look like `29/9/2026` or `today`.');
   if (!billTo.length) problems.push('**Bill to** is empty.');
   if (bad.length) problems.push(`Could not read ${bad.map((b) => `\`${b}\``).join(', ')}. Write items like \`6 x 30th bb @ 114\`.`);
   if (!items.length && !bad.length) problems.push('Add at least one item, like `6 x 30th bb @ 114`.');
@@ -93,32 +121,44 @@ async function makeInvoice(interaction, orderId) {
   }
 
   const number = recordInvoice({
-    billTo: billTo.join('\n'), items, shipping, paid, note, orderId: Number(orderId) || null, createdBy: interaction.user.id,
+    billTo: billTo.join('\n'), items, shipping, paid, note, orderId: order?.id || null,
+    createdBy: interaction.user.id, issuedOn: issued,
   });
-
-  const now = new Date();
-  const { from, payment } = invoiceSender();
-  const { pdf, totalCents } = invoicePdf({
-    number,
-    issued: dateLong(now),
-    due: dateLong(new Date(now.getTime() + DUE_DAYS * 86400000)),
-    paidOn: paid ? dateLong(now) : null,
-    from,
-    billTo,
-    items,
-    shippingCents: shipping.cents,
-    shippingLabel: shipping.label,
-    note,
-    payment,
-  });
+  const { pdf, totalCents, due } = renderPdf({ number, issued, paid, billTo, items, shipping, note });
 
   await interaction.reply({
-    content: `🧾 **${number}** for **${billTo[0]}**: **${money(totalCents)} AUD** `
-      + `${paid ? '(marked paid)' : `(due ${dateLong(new Date(now.getTime() + DUE_DAYS * 86400000))})`}.\n`
+    content: `🧾 **${number}** for **${billTo[0]}**, dated ${dateLong(issued)}: **${money(totalCents)} AUD** `
+      + `${paid ? '(marked paid)' : `(due ${dateLong(due)})`}.\n`
       + 'Save the PDF below and send it to them.',
     files: [new AttachmentBuilder(pdf, { name: `invoice-${number}.pdf` })],
     ephemeral: true,
   });
+}
+
+/**
+ * Called by /paid: makes a PAID invoice for the order and posts it in the
+ * buyer's ticket thread. Turned off with AUTO_INVOICE=off. Returns the
+ * invoice number, or null when nothing was sent. Never throws, because a
+ * failed invoice must not undo or hide a payment that was recorded.
+ */
+export async function sendPaidInvoice(client, order) {
+  if (/^(off|false|no|0)$/i.test(process.env.AUTO_INVOICE || '')) return null;
+  if (!order?.thread_id) return null;
+  try {
+    const thread = await client.channels.fetch(order.thread_id);
+    if (!thread?.isTextBased?.()) return null;
+    const inv = paidInvoiceFor(order);
+    const { pdf, totalCents } = renderPdf({ ...inv, paid: true });
+    await thread.send({
+      content: `🧾 Here's your invoice for this order: **${inv.number}**, ${money(totalCents)} AUD, paid. Thanks!`,
+      files: [new AttachmentBuilder(pdf, { name: `invoice-${inv.number}.pdf` })],
+      allowedMentions: { parse: [] },
+    });
+    return inv.number;
+  } catch (err) {
+    console.error(`Auto invoice for ${order.reference_code} failed:`, err.message);
+    return null;
+  }
 }
 
 export async function handleInvoiceInteraction(interaction) {

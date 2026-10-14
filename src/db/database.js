@@ -264,6 +264,9 @@ export function initDatabase() {
   // been printed through the shipping buttons. Indexed after the column
   // exists, since an older database only gets it from the line above.
   ensureColumn('orders', 'label_batch_id', 'INTEGER');
+  // The date printed on an invoice, which can be the day it was paid rather
+  // than the day the PDF was made.
+  ensureColumn('invoices', 'issued_on', 'TEXT');
   db.exec('CREATE INDEX IF NOT EXISTS idx_orders_batch ON orders(label_batch_id)');
 
   return db;

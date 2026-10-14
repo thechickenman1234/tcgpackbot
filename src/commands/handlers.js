@@ -22,7 +22,7 @@ import { createScheduledEvent, eventUrl } from '../services/discordEventService.
 import { applyTrackingPaste, postTrackingToThread, trackingReply } from '../services/trackingService.js';
 import { postShippingPanel } from '../handlers/shippingPanel.js';
 import { handleReelCommand } from '../handlers/reelLoop.js';
-import { handleInvoiceCommand, invoiceAutocomplete } from '../handlers/invoiceMaker.js';
+import { handleInvoiceCommand, invoiceAutocomplete, sendPaidInvoice } from '../handlers/invoiceMaker.js';
 import {
   addProductToSale,
   cancelScheduledSale,
@@ -457,6 +457,14 @@ async function handlePaid(interaction) {
     content: `✅ Marked **${order.reference_code}** as **paid** (${formatAud(order.total_cents)}).`
       + (gotRole ? '\n🏅 Buyer role given.' : ''),
   });
+
+  // The PAID invoice goes into their ticket, straight under the line above.
+  // Run from somewhere else, say where it went so it is not a mystery.
+  const invoiceNumber = await sendPaidInvoice(interaction.client, result.order);
+  if (invoiceNumber && interaction.channelId !== order.thread_id) {
+    await interaction.followUp({ content: `🧾 Invoice **${invoiceNumber}** sent to their ticket.`, ephemeral: true })
+      .catch(() => {});
+  }
 }
 
 async function handleShipped(interaction) {
