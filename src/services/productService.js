@@ -167,11 +167,15 @@ export function listAllProducts() {
  */
 export function reserveStock(productId, quantity) {
   const db = getDb();
+  const now = nowIso();
+  // A product inside its late window is switched off but still for sale.
+  // Checking only `active` here made every late claim say "sold out".
   const result = db.prepare(`
     UPDATE products
     SET quantity_available = quantity_available - ?, updated_at = ?
-    WHERE id = ? AND active = 1 AND quantity_available >= ?
-  `).run(quantity, nowIso(), productId, quantity);
+    WHERE id = ? AND quantity_available >= ?
+      AND (active = 1 OR (late_until IS NOT NULL AND late_until > ?))
+  `).run(quantity, now, productId, quantity, now);
 
   if (result.changes === 0) return null;
   return getProductById(productId);
@@ -185,7 +189,11 @@ export function releaseStock(productId, quantity, { reactivate = true } = {}) {
   `).run(quantity, nowIso(), productId);
 
   const product = getProductById(productId);
-  if (reactivate && product?.quantity_available > 0 && !product.active) {
+  // Inside the late window the stock just goes back on the late pile at the
+  // markup. Switching the product back on would reopen it at full price and
+  // keep it open after the window shuts.
+  const inLateWindow = product?.late_until && product.late_until > nowIso();
+  if (reactivate && product?.quantity_available > 0 && !product.active && !inLateWindow) {
     setProductActive(productId, true);
   }
   return getProductById(productId);

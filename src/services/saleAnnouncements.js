@@ -1,5 +1,5 @@
 import { config } from '../config.js';
-import { listActiveProducts, openLateWindow, setProductActive } from './productService.js';
+import { closeLateWindow, listActiveProducts, openLateWindow, setProductActive } from './productService.js';
 import { clearStockpostPointer, refreshStockpost } from './stockpostService.js';
 
 export function buildSaleOverMessage(productNames = []) {
@@ -83,6 +83,21 @@ export async function endClaimSale(channel, { announce = true, productNames = nu
  */
 export async function handlePostClaimSaleState(channel, product) {
   if (!product) return;
+
+  // A late claim: the sale already ended once. Running the end-of-sale
+  // steps again would post "CLAIM SALE IS NOW OVER" to @everyone after
+  // every single late claim. Just say so if that was the last one.
+  if (!product.active) {
+    if (product.quantity_available <= 0) {
+      closeLateWindow(product.id);
+      try {
+        await announceSoldOut(channel, product.name);
+      } catch (err) {
+        console.error('Sold out announce failed:', err);
+      }
+    }
+    return;
+  }
 
   if (product.quantity_available <= 0) {
     setProductActive(product.id, false);
