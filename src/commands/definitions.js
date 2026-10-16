@@ -555,6 +555,14 @@ export const commandDefinitions = [
     ),
 
   new SlashCommandBuilder()
+    .setName('audit')
+    .setDescription('Read-only report on the server for staff: channels, roles, members, what people ask')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addIntegerOption((o) =>
+      o.setName('days').setDescription('How far back to look at messages (default 30)').setRequired(false).setMinValue(1).setMaxValue(90),
+    ),
+
+  new SlashCommandBuilder()
     .setName('shippingpanel')
     .setDescription('Post the shipping buttons here: print labels, mark posted, add tracking')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),

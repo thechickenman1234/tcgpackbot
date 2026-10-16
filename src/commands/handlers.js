@@ -22,6 +22,7 @@ import { createScheduledEvent, eventUrl } from '../services/discordEventService.
 import { applyTrackingPaste, postTrackingToThread, trackingReply } from '../services/trackingService.js';
 import { postShippingPanel } from '../handlers/shippingPanel.js';
 import { handleReelCommand } from '../handlers/reelLoop.js';
+import { handleAuditCommand } from '../handlers/auditCommand.js';
 import { handleInvoiceCommand, invoiceAutocomplete, sendPaidInvoice } from '../handlers/invoiceMaker.js';
 import {
   addProductToSale,
@@ -1944,6 +1945,8 @@ export async function handleSlashCommand(interaction) {
       return postShippingPanel(interaction);
     case 'reel':
       return handleReelCommand(interaction);
+    case 'audit':
+      return handleAuditCommand(interaction);
     case 'invoice':
       return handleInvoiceCommand(interaction);
     case 'claimed':
