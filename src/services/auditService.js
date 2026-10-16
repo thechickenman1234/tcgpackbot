@@ -95,6 +95,22 @@ export function summarizeChannel(messages, { includeText = false, pseudo = pseud
   };
 }
 
+const stampFormat = new Intl.DateTimeFormat('en-AU', {
+  timeZone: ZONE, day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true,
+});
+
+/**
+ * The full log of one channel, oldest first, for the `full` option: the same
+ * stand-in names and blanking as the report, with longer lines kept.
+ */
+export function formatChannelLog(name, messages, pseudo) {
+  const lines = [...messages]
+    .filter((m) => m.content && m.content.trim())
+    .sort((a, b) => a.createdAt - b.createdAt)
+    .map((m) => `[${stampFormat.format(m.createdAt)}] ${pseudo(m.authorId, m)}: ${redact(m.content, 1000)}`);
+  return [`# #${name}`, `${lines.length} messages, oldest first. Names hidden, contact details blanked.`, '', ...lines, ''].join('\n');
+}
+
 /** Who has bought, who came back, and what leaked: from the bot's own orders. */
 export function buyerStats(sinceIso) {
   const db = getDb();

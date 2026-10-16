@@ -1,7 +1,7 @@
 import { AttachmentBuilder, ChannelType, PermissionFlagsBits } from 'discord.js';
 import { config } from '../config.js';
 import { isStaff } from '../utils/permissions.js';
-import { buildAuditMarkdown, buyerStats, pseudonymizer, summarizeChannel } from '../services/auditService.js';
+import { buildAuditMarkdown, buyerStats, formatChannelLog, pseudonymizer, summarizeChannel } from '../services/auditService.js';
 
 /**
  * /audit: a read-only report on the server, sent only to the staff member who
@@ -12,6 +12,10 @@ import { buildAuditMarkdown, buyerStats, pseudonymizer, summarizeChannel } from 
 
 /** Enough to see what a channel is like without pulling its whole history. */
 const PER_CHANNEL_CAP = 400;
+/** With `full`, the whole window, up to this many per channel. */
+const FULL_CAP = 3000;
+/** Discord allows 10 files on one message: the report plus 9 logs. */
+const MAX_LOG_FILES = 9;
 const DAY_MS = 86400000;
 
 /** Newest first, stopping at the window or the cap, whichever comes first. */
@@ -79,6 +83,8 @@ export async function handleAuditCommand(interaction) {
     return;
   }
   const days = interaction.options.getInteger('days') ?? 30;
+  const full = interaction.options.getBoolean?.('full') ?? false;
+  const cap = full ? FULL_CAP : PER_CHANNEL_CAP;
   await interaction.deferReply({ ephemeral: true });
 
   const guild = interaction.guild;
@@ -100,6 +106,7 @@ export async function handleAuditCommand(interaction) {
   const hoursAll = Array(24).fill(0);
   const report = [];
   const otherChannels = [];
+  const logs = [];
 
   const textTypes = new Set([ChannelType.GuildText, ChannelType.GuildAnnouncement]);
   const ordered = [...channels.values()]
@@ -129,13 +136,14 @@ export async function handleAuditCommand(interaction) {
 
     let raw = [];
     try {
-      raw = await fetchRecent(ch, sinceMs, PER_CHANNEL_CAP);
+      raw = await fetchRecent(ch, sinceMs, cap);
     } catch (err) {
       console.error(`Audit could not read #${ch.name}:`, err.message);
       report.push({ ...base, skipped: true });
       continue;
     }
-    const msgs = raw.map((m) => ({
+    // System messages ("X joined the server") are not someone talking.
+    const msgs = raw.filter((m) => !m.system).map((m) => ({
       authorId: m.author.id,
       isBot: m.author.bot,
       isStaff: staffIds.has(m.author.id),
@@ -146,7 +154,10 @@ export async function handleAuditCommand(interaction) {
     // Text only from channels every member can already see.
     const summary = summarizeChannel(msgs, { includeText: base.public, pseudo });
     summary.hours.forEach((n, h) => { hoursAll[h] += n; });
-    report.push({ ...base, ...summary, capped: raw.length >= PER_CHANNEL_CAP });
+    report.push({ ...base, ...summary, capped: raw.length >= cap });
+    // The full log is for the owner reading their own server, so private
+    // channels are included. Threads (claim tickets) still are not.
+    if (full && msgs.length) logs.push({ name: ch.name, text: formatChannelLog(ch.name, msgs, pseudo) });
   }
 
   const humans = members.filter((m) => !m.user.bot);
@@ -158,7 +169,7 @@ export async function handleAuditCommand(interaction) {
   const md = buildAuditMarkdown({
     now,
     days,
-    cap: PER_CHANNEL_CAP,
+    cap,
     guildName: guild.name,
     humans: humans.size,
     bots: members.size - humans.size,
@@ -187,8 +198,23 @@ export async function handleAuditCommand(interaction) {
   });
 
   const stamp = now.toISOString().slice(0, 10);
+  const files = [new AttachmentBuilder(Buffer.from(md, 'utf8'), { name: `server-audit-${stamp}.md` })];
+  const slug = (name) => name.replace(/[^a-z0-9-]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'channel';
+  // More channels than files allowed: the last file holds the rest together.
+  const keep = logs.length > MAX_LOG_FILES ? MAX_LOG_FILES - 1 : logs.length;
+  const rest = logs.slice(keep);
+  for (const log of logs.slice(0, keep)) {
+    files.push(new AttachmentBuilder(Buffer.from(log.text, 'utf8'), { name: `log-${slug(log.name)}-${stamp}.txt` }));
+  }
+  if (rest.length) {
+    const merged = rest.map((log) => log.text).join('\n\n');
+    files.push(new AttachmentBuilder(Buffer.from(merged, 'utf8'), { name: `log-other-channels-${stamp}.txt` }));
+  }
+
   await interaction.editReply({
-    content: `Here's the server audit for the last ${days} days. Nothing was posted or changed. Drop the file into Claude to go through it.`,
-    files: [new AttachmentBuilder(Buffer.from(md, 'utf8'), { name: `server-audit-${stamp}.md` })],
+    content: full
+      ? `Here's the server audit for the last ${days} days, plus the full chat log of ${logs.length} channels. Names are hidden and contact details blanked. Nothing was posted or changed. Drop the files into Claude.`
+      : `Here's the server audit for the last ${days} days. Nothing was posted or changed. Drop the file into Claude to go through it.`,
+    files,
   });
 }

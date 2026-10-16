@@ -560,6 +560,9 @@ export const commandDefinitions = [
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addIntegerOption((o) =>
       o.setName('days').setDescription('How far back to look at messages (default 30)').setRequired(false).setMinValue(1).setMaxValue(90),
+    )
+    .addBooleanOption((o) =>
+      o.setName('full').setDescription('Also attach the whole chat log of every channel, names hidden').setRequired(false),
     ),
 
   new SlashCommandBuilder()
