@@ -52,4 +52,8 @@ export const config = {
   // How long claims keep working after a sale ends, and what they cost.
   lateWindowHours: Number(optional('LATE_WINDOW_HOURS', '24')),
   lateMarkupPercent: Number(optional('LATE_MARKUP_PERCENT', '10')),
+  // Claude's private door into the bot (src/ops). Off unless a secret is set.
+  // Railway hands the service its port in PORT.
+  opsSecret: optional('OPS_SECRET', ''),
+  opsPort: Number(optional('PORT', '8080')),
 };
