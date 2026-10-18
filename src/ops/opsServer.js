@@ -470,6 +470,35 @@ const routes = {
   },
 };
 
+/*
+ * The website's sale banner and "next claim sales" list read GET /public/sales.
+ * It needs no secret on purpose and only ever shows what anyone in the server
+ * can already see: which products are on, and when the sale opens and closes.
+ * No prices (those go out at 7pm), no stock, no buyers. Kept for 30 seconds so
+ * every page view doesn't touch the database.
+ */
+const PUBLIC_MAX_AGE_MS = 30000;
+let publicCache = { at: 0, body: null };
+
+export function publicSales() {
+  if (publicCache.body && Date.now() - publicCache.at < PUBLIC_MAX_AGE_MS) return publicCache.body;
+  const sales = listUpcomingSales()
+    .map((s) => {
+      const names = productsFor(s).map((p) => p.display_name || p.name);
+      return {
+        title: s.title || names.join(' + '),
+        products: names,
+        live: s.status === 'open',
+        start: s.start_at,
+        end: s.end_at,
+      };
+    })
+    .filter((s) => s.products.length)
+    .slice(0, 6);
+  publicCache = { at: Date.now(), body: { sales, now: new Date().toISOString() } };
+  return publicCache.body;
+}
+
 export function startOpsServer(client) {
   if (!config.opsSecret) return;
 
@@ -481,6 +510,22 @@ export function startOpsServer(client) {
 
     const url = new URL(req.url, 'http://ops');
     const key = `${req.method} ${url.pathname.replace(/\/+$/, '')}`;
+
+    // Public, before any secret check, and never counted as a failed attempt.
+    if (key === 'GET /public/sales') {
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'public, max-age=30',
+      });
+      try {
+        return res.end(JSON.stringify(publicSales()));
+      } catch (err) {
+        console.error('Public sales feed failed:', err);
+        return res.end(JSON.stringify({ sales: [], now: new Date().toISOString() }));
+      }
+    }
+
     const address = clientAddress(req);
     if (lockedOut(address)) return send(429, { ok: false, error: 'Too many wrong attempts. Try later.' });
     if (!authorised(req)) {
