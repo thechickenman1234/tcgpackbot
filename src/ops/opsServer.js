@@ -4,7 +4,7 @@ import { config } from '../config.js';
 import { formatAud } from '../utils/permissions.js';
 import { getBuyer } from '../services/buyerService.js';
 import { createScheduledEvent, eventUrl } from '../services/discordEventService.js';
-import { getClaimedTotals, getClaimsForProduct } from '../services/orderService.js';
+import { getClaimedTotals, getClaimsForProduct, getLifetimeTotals } from '../services/orderService.js';
 import { logToStaff } from '../services/staffLog.js';
 import {
   createProduct,
@@ -383,6 +383,49 @@ const routes = {
       text: `${title} is up: ${formatMelbourne(start.toISOString())} to ${formatMelbourne(result.end.toISOString())}.`
         + (result.imageSkipped ? ' Could not fetch the picture, so it has no cover image.' : ''),
       url: eventUrl(guild.id, result.event.id),
+    };
+  },
+
+  /** Lifetime sales and the member count, for the website's trust numbers. */
+  'GET /ops/stats': async (client, _body, query) => {
+    const exclude = String(query.get('exclude') || '').split(',').map((s) => s.trim()).filter(Boolean);
+    const guild = await client.guilds.fetch(config.guildId);
+    return { members: guild.memberCount, ...getLifetimeTotals(exclude) };
+  },
+
+  /**
+   * Every message in one channel, oldest first, with its attachments. Made
+   * for pulling the testimonials onto the website. Discord signs attachment
+   * links and they expire within about a day, so whatever reads this has to
+   * save the images straight away rather than keep the links.
+   */
+  'GET /ops/channel-messages': async (client, _body, query) => {
+    const channel = await resolveChannel(client, query.get('channel'));
+    const limit = Math.min(Number(query.get('limit')) || 500, 2000);
+    const messages = [];
+    let before;
+    while (messages.length < limit) {
+      const batch = await channel.messages.fetch({ limit: 100, before });
+      if (!batch.size) break;
+      messages.push(...batch.values());
+      before = batch.last().id;
+      if (batch.size < 100) break;
+    }
+
+    return {
+      channel: channel.name,
+      count: Math.min(messages.length, limit),
+      messages: messages.slice(0, limit).reverse().map((m) => ({
+        id: m.id,
+        at: m.createdAt.toISOString(),
+        author: m.member?.displayName || m.author.globalName || m.author.username,
+        author_is_bot: m.author.bot,
+        text: m.content,
+        reactions: [...m.reactions.cache.values()].reduce((n, r) => n + r.count, 0),
+        attachments: [...m.attachments.values()].map((a) => ({
+          url: a.url, name: a.name, type: a.contentType, width: a.width, height: a.height, size: a.size,
+        })),
+      })),
     };
   },
 

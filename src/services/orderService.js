@@ -421,6 +421,46 @@ export function getClaimsForProduct(productName, sinceIso = null) {
 }
 
 /**
+ * Lifetime numbers for the website's trust counters: every order that was
+ * actually paid, however far it has got since. Lachy's own test orders are
+ * left out by buyer id, because they were never sales.
+ */
+export function getLifetimeTotals(excludeBuyerIds = []) {
+  const db = getDb();
+  const not = excludeBuyerIds.length ? `AND buyer_id NOT IN (${excludeBuyerIds.map(() => '?').join(', ')})` : '';
+  const sold = `status IN ('paid', 'shipped', 'archived') ${not}`;
+
+  const totals = db.prepare(`
+    SELECT
+      COUNT(*) AS orders,
+      COALESCE(SUM(quantity), 0) AS boxes,
+      COALESCE(SUM(total_cents), 0) AS revenue_cents,
+      COUNT(DISTINCT buyer_id) AS buyers,
+      MIN(claimed_at) AS first_order,
+      MAX(claimed_at) AS last_order
+    FROM orders WHERE ${sold}
+  `).get(...excludeBuyerIds);
+
+  const repeat = db.prepare(`
+    SELECT COUNT(*) AS buyers FROM (
+      SELECT buyer_id FROM orders WHERE ${sold} GROUP BY buyer_id HAVING COUNT(*) > 1
+    )
+  `).get(...excludeBuyerIds);
+
+  const bySource = db.prepare(`
+    SELECT source, COUNT(*) AS orders, SUM(quantity) AS boxes
+    FROM orders WHERE ${sold} GROUP BY source ORDER BY boxes DESC
+  `).all(...excludeBuyerIds);
+
+  const byProduct = db.prepare(`
+    SELECT product_name AS product, SUM(quantity) AS boxes
+    FROM orders WHERE ${sold} GROUP BY product_name ORDER BY boxes DESC
+  `).all(...excludeBuyerIds);
+
+  return { ...totals, repeat_buyers: repeat.buyers, by_source: bySource, by_product: byProduct };
+}
+
+/**
  * Everyone who has ever paid for anything. Synthetic ids from /logsale are
  * filtered out by the caller, since they belong to people who are not on
  * Discord at all.
