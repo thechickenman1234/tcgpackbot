@@ -18,7 +18,14 @@ import {
 import { buildBoardEmbed } from '../services/giveawayBoard.js';
 import { getTotalsBySource, logManualOrder } from '../services/manualOrderService.js';
 import { backfillBuyerRole, grantBuyerRole } from '../services/buyerRoleService.js';
-import { createScheduledEvent, eventUrl } from '../services/discordEventService.js';
+import {
+  createScheduledEvent,
+  eventUrl,
+  removedEventLine,
+  removeSaleEvent,
+  saleEventLine,
+  syncSaleEvent,
+} from '../services/discordEventService.js';
 import { applyTrackingPaste, postTrackingToThread, trackingReply } from '../services/trackingService.js';
 import { postShippingPanel } from '../handlers/shippingPanel.js';
 import { handleReelCommand } from '../handlers/reelLoop.js';
@@ -1331,6 +1338,8 @@ async function handleNewSale(interaction) {
 
   const all = productsFor(sale);
   const startUnix = Math.floor(new Date(sale.start_at).getTime() / 1000);
+  // The night's Discord event, made or brought up to date with what's on.
+  const eventLine = saleEventLine(interaction.guild, await syncSaleEvent(interaction.guild, sale));
 
   await interaction.editReply({
     content: `✅ **${isNew ? 'Created' : 'Updated'} ${product.name}** and `
@@ -1341,7 +1350,8 @@ async function handleNewSale(interaction) {
         : '')
       + (sale.announce_at ? `📣 Prices **${formatMelbourne(sale.announce_at)}** in <#${sale.announce_channel_id}>\n` : '')
       + `🔔 Opens **${formatMelbourne(sale.start_at)}** (<t:${startUnix}:R>)\n`
-      + `🔒 Closes **${formatMelbourne(sale.end_at)}**, then 24h late claims at +${config.lateMarkupPercent}%\n\n`
+      + `🔒 Closes **${formatMelbourne(sale.end_at)}**, then 24h late claims at +${config.lateMarkupPercent}%\n`
+      + `${eventLine}\n\n`
       + (all.length > 1
         ? 'Two or more products, so the posts will tell people to name which one they want.'
         : 'One product, so the posts will just say **"claim 2x"**.')
@@ -1399,6 +1409,10 @@ async function handleScheduleSale(interaction) {
   if (!announceAt || announceAt.getTime() >= startAt.getTime()) announceAt = null;
   const announceChannelId = config.announceChannelId || null;
 
+  // Deferred because making the night's event can take longer than the
+  // three seconds Discord gives a reply.
+  await interaction.deferReply({ ephemeral: true });
+
   const sale = createScheduledSale({
     productIds: products.map((p) => p.id),
     startAt: startAt.toISOString(),
@@ -1414,15 +1428,17 @@ async function handleScheduleSale(interaction) {
   const startUnix = Math.floor(startAt.getTime() / 1000);
   const soldOut = products.filter((p) => p.quantity_available <= 0);
   const noLongName = products.filter((p) => !p.display_name);
+  const eventLine = saleEventLine(interaction.guild, await syncSaleEvent(interaction.guild, sale));
 
-  await interaction.reply({
+  await interaction.editReply({
     content: `🗓️ **Sale scheduled**\n\n`
       + `${products.map((p) => `• ${p.name} — ${formatAud(p.price_cents)}, ${p.quantity_available} in stock`).join('\n')}\n\n`
       + (sale.announce_at
         ? `📣 Prices posted **${formatMelbourne(sale.announce_at)}** in <#${announceChannelId}>\n`
         : '📣 No price announcement. Set `ANNOUNCE_CHANNEL_ID` on Railway to turn it on.\n')
       + `🔔 Opens **${formatMelbourne(sale.start_at)}** (<t:${startUnix}:R>)\n`
-      + `🔒 Closes **${formatMelbourne(sale.end_at)}**, then 24h late claims at +${config.lateMarkupPercent}%.\n\n`
+      + `🔒 Closes **${formatMelbourne(sale.end_at)}**, then 24h late claims at +${config.lateMarkupPercent}%.\n`
+      + `${eventLine}\n\n`
       + 'The bot writes both posts itself. You do not need to be here.'
       + (soldOut.length
         ? `\n\n⚠️ **${soldOut.map((p) => p.name).join(', ')}** has no stock. Set it with \`/product stock\`.`
@@ -1431,7 +1447,6 @@ async function handleScheduleSale(interaction) {
         ? `\n\n💡 **${noLongName.map((p) => p.name).join(', ')}** has no long name, so the post will just say "${noLongName[0].name}". `
           + 'Set one with `/product describe`.'
         : ''),
-    ephemeral: true,
   });
 }
 
@@ -1466,13 +1481,17 @@ async function handleCancelSale(interaction) {
     return;
   }
 
+  await interaction.deferReply({ ephemeral: true });
   const result = cancelScheduledSale(Number(interaction.options.getString('sale', true)));
-  await interaction.reply({
+  const eventLine = result.ok
+    ? removedEventLine(interaction.guild, await removeSaleEvent(interaction.guild, result.sale))
+    : '';
+  await interaction.editReply({
     content: result.ok
       ? `Cancelled the sale set for **${formatMelbourne(result.sale.start_at)}**.`
       + (result.sale.status === 'open' ? '\n⚠️ It was already live — run `/endsale` to close it properly.' : '')
+      + (eventLine ? `\n${eventLine}` : '')
       : 'That sale has already finished or been cancelled.',
-    ephemeral: true,
   });
 }
 

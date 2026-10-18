@@ -3,7 +3,7 @@ import http from 'node:http';
 import { config } from '../config.js';
 import { formatAud } from '../utils/permissions.js';
 import { getBuyer } from '../services/buyerService.js';
-import { createScheduledEvent, eventUrl } from '../services/discordEventService.js';
+import { createScheduledEvent, eventUrl, removeSaleEvent, syncSaleEvent } from '../services/discordEventService.js';
 import { getClaimedTotals, getClaimsForProduct, getLifetimeTotals } from '../services/orderService.js';
 import { logToStaff } from '../services/staffLog.js';
 import {
@@ -233,8 +233,8 @@ const routes = {
     return { text: sales.length ? `${sales.length} queued.` : 'No sales queued.', sales };
   },
 
-  /** Same as /newsale: make or update the product and queue its night. */
-  'POST /ops/sales': async (_client, body) => {
+  /** Same as /newsale: make or update the product and queue its night (and its event). */
+  'POST /ops/sales': async (client, body) => {
     const name = String(body.name ?? '').trim();
     const price = Number(body.price);
     const quantity = Number(body.quantity);
@@ -289,19 +289,30 @@ const routes = {
         title: body.title ?? null,
       });
 
+    const guild = await client.guilds.fetch(config.guildId);
+    const event = await syncSaleEvent(guild, sale);
     return {
       text: `${isNew ? 'Created' : 'Updated'} ${product.name} and `
-        + `${existing ? 'added it to the sale already queued that night' : 'scheduled the sale'}.`,
+        + `${existing ? 'added it to the sale already queued that night' : 'scheduled the sale'}.`
+        + (event.ok
+          ? ` Event ${event.kept ? 'already there (made by hand, left alone)' : event.updated ? 'updated' : 'made'}.`
+          : ` No Discord event: ${event.reason}`),
       sale: saleSummary(sale),
+      event: event.ok ? eventUrl(guild.id, event.event.id) : null,
     };
   },
 
-  'POST /ops/sales/cancel': async (_client, body) => {
+  'POST /ops/sales/cancel': async (client, body) => {
     const result = cancelScheduledSale(Number(body.id));
     if (!result.ok) fail('That sale has already finished or been cancelled.', 404);
+    const guild = await client.guilds.fetch(config.guildId);
+    const removed = await removeSaleEvent(guild, result.sale);
     return {
       text: `Cancelled the sale set for ${formatMelbourne(result.sale.start_at)}.`
-        + (result.sale.status === 'open' ? ' It was already live, so run /endsale to close it properly.' : ''),
+        + (result.sale.status === 'open' ? ' It was already live, so run /endsale to close it properly.' : '')
+        + (!removed.ok ? ` Could not delete its event: ${removed.reason}`
+          : removed.kept ? ' Its event was made by hand, so delete it yourself.'
+            : removed.found ? ' Its event is deleted too.' : ''),
     };
   },
 
