@@ -293,11 +293,55 @@ export function cancelOrder(orderId, reason, { reactivateStock = true } = {}) {
   return { ok: true, order: getOrderById(orderId) };
 }
 
+/** Pending orders past their deadline. One with a payment screenshot waiting on staff is never expired. */
 export function getExpiredUnpaidOrders() {
   return getDb().prepare(`
     SELECT * FROM orders
-    WHERE status = 'pending' AND payment_deadline_at <= ?
+    WHERE status = 'pending' AND payment_deadline_at <= ? AND proof_at IS NULL
   `).all(nowIso());
+}
+
+/**
+ * The buyer posted a payment screenshot: hold the order until staff check it.
+ * Returns false when it is not pending or an earlier screenshot is already held.
+ */
+export function markProofPosted(orderId, messageId) {
+  const res = getDb().prepare(`
+    UPDATE orders SET proof_at = ?, proof_message_id = ?
+    WHERE id = ? AND status = 'pending' AND proof_at IS NULL
+  `).run(nowIso(), messageId, orderId);
+  return res.changes > 0;
+}
+
+/**
+ * Staff said the screenshot doesn't show a payment: drop the hold and give
+ * the buyer until at least `minDeadlineIso` to send the right one, with a
+ * fresh reminder before then.
+ */
+export function clearProof(orderId, minDeadlineIso) {
+  getDb().prepare(`
+    UPDATE orders
+    SET proof_at = NULL,
+        proof_message_id = NULL,
+        proof_overdue_pinged_at = NULL,
+        reminder_sent_at = NULL,
+        payment_deadline_at = MAX(payment_deadline_at, ?)
+    WHERE id = ? AND status = 'pending'
+  `).run(minDeadlineIso, orderId);
+  return getOrderById(orderId);
+}
+
+/** Held orders (screenshot posted) now past their deadline that staff haven't been pinged about. */
+export function getOverdueHeldOrders() {
+  return getDb().prepare(`
+    SELECT * FROM orders
+    WHERE status = 'pending' AND proof_at IS NOT NULL
+      AND payment_deadline_at <= ? AND proof_overdue_pinged_at IS NULL
+  `).all(nowIso());
+}
+
+export function markOverduePinged(orderId) {
+  getDb().prepare('UPDATE orders SET proof_overdue_pinged_at = ? WHERE id = ?').run(nowIso(), orderId);
 }
 
 /** Pending orders whose deadline is within the reminder window and not yet reminded. */
@@ -313,6 +357,7 @@ export function getOrdersNeedingPaymentReminder() {
     SELECT * FROM orders
     WHERE status = 'pending'
       AND reminder_sent_at IS NULL
+      AND proof_at IS NULL
       AND payment_deadline_at > ?
       AND payment_deadline_at <= ?
   `).all(reminderWindowEnd, reminderWindowStart);

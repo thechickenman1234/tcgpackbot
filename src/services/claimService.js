@@ -104,7 +104,8 @@ async function postTopUpUpdate(order, buyerUser, added, shippingDetails) {
       content: [
         `<@${buyerUser.id}> · <@&${config.staffRoleId}>`,
         `**Claim updated:** +${added} → now **${order.quantity}x ${order.product_name}** (${formatAud(order.total_cents)})`,
-        `Order: \`${order.reference_code}\` — pay the **new total** below.`,
+        `Order: \`${order.reference_code}\`. Pay the **new total** below.`,
+        '📸 **After you pay, post a screenshot of the payment here.**',
       ].join('\n'),
       embeds: details ? [buildPaymentEmbed(order, details)] : [],
       components: [shippingUpdateRow(order.id)],
@@ -228,6 +229,8 @@ export async function fulfillClaim({
           `<@${buyerUser.id}> · <@&${config.staffRoleId}>`,
           `**Claim locked:** ${order.quantity}x **${order.product_name}** (${formatAud(order.total_cents)})`,
           `Order: \`${order.reference_code}\``,
+          '',
+          '📸 **After you pay, post a screenshot of the payment here.**',
         ].join('\n'),
         embeds: [buildPaymentEmbed(order, details)],
         components: [shippingUpdateRow(order.id)],

@@ -17,6 +17,7 @@ import { SHIP_METHOD_PREFIX, handleShippingMethodButton } from './shippingMethod
 import { SHIPPING_PREFIX, handleShippingPanel } from './shippingPanel.js';
 import { REEL_PREFIX, handleReelInteraction } from './reelLoop.js';
 import { INVOICE_PREFIX, handleInvoiceInteraction } from './invoiceMaker.js';
+import { PAYPROOF_PREFIX, handlePaymentProofButton } from './paymentProof.js';
 
 export async function handleInteractionCreate(interaction) {
   try {
@@ -50,6 +51,12 @@ export async function handleInteractionCreate(interaction) {
     // Video feedback loops: the Log results button and its pop-up.
     if ((interaction.isButton() || interaction.isModalSubmit()) && interaction.customId.startsWith(REEL_PREFIX)) {
       await handleReelInteraction(interaction);
+      return;
+    }
+
+    // Paid / Not paid under a buyer's payment screenshot.
+    if (interaction.isButton() && interaction.customId.startsWith(PAYPROOF_PREFIX)) {
+      await handlePaymentProofButton(interaction);
       return;
     }
 

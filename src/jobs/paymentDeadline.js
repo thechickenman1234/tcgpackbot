@@ -8,6 +8,7 @@ import {
 } from '../services/orderService.js';
 import { logNoShow } from '../services/staffLog.js';
 import { refreshStockpost } from '../services/stockpostService.js';
+import { pingOverdueProofs } from '../handlers/paymentProof.js';
 
 async function applyBannedRole(client, guildId, userId) {
   if (!config.bannedRoleId) return;
@@ -58,7 +59,7 @@ export async function processPaymentReminders(client) {
         content: [
           `⚠️ <@${order.buyer_id}> payment reminder for \`${order.reference_code}\``,
           `Deadline is <t:${deadlineUnix}:R> (<t:${deadlineUnix}:F>).`,
-          'Pay via PayID (include the order reference) and post a screenshot here, or you will be banned from future claim sales.',
+          "📸 **Pay, then post a screenshot of your payment here.** No screenshot by the deadline means the claim is cancelled and you're banned from future claim sales.",
         ].join('\n'),
       });
 
@@ -120,6 +121,9 @@ export function startPaymentDeadlineJob(client, intervalMs = 60_000) {
     });
     processExpiredPayments(client).catch((err) => {
       console.error('paymentDeadline job failed:', err);
+    });
+    pingOverdueProofs(client).catch((err) => {
+      console.error('overdue screenshot ping failed:', err);
     });
   };
 

@@ -267,6 +267,13 @@ export function initDatabase() {
   // The date printed on an invoice, which can be the day it was paid rather
   // than the day the PDF was made.
   ensureColumn('invoices', 'issued_on', 'TEXT');
+  // When the buyer posted a payment screenshot in their ticket. While it is
+  // set the order is never auto-cancelled or banned: staff press Paid or
+  // Not paid on it instead.
+  ensureColumn('orders', 'proof_at', 'TEXT');
+  ensureColumn('orders', 'proof_message_id', 'TEXT');
+  // When staff were pinged that a held order went past its deadline unchecked.
+  ensureColumn('orders', 'proof_overdue_pinged_at', 'TEXT');
   db.exec('CREATE INDEX IF NOT EXISTS idx_orders_batch ON orders(label_batch_id)');
 
   return db;

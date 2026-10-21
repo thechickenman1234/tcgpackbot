@@ -114,6 +114,38 @@ export function recordAppealOutcome(discordId, accepted, staffId, reason) {
   );
 }
 
+/**
+ * Everyone banned right now, newest ban first: the reason and who did it
+ * (no staff id = the bot, for a no-show), and whether they appealed since.
+ */
+export function listBannedBuyers() {
+  return getDb().prepare(`
+    SELECT b.discord_id, b.name, h.reason, h.staff_id, h.created_at AS banned_at,
+      (SELECT COUNT(*) FROM ban_history a
+        WHERE a.buyer_id = b.discord_id AND a.action = 'appeal_submitted'
+          AND a.created_at >= COALESCE(h.created_at, '')) AS appeals
+    FROM buyers b
+    LEFT JOIN ban_history h ON h.id = (
+      SELECT id FROM ban_history
+      WHERE buyer_id = b.discord_id AND action = 'ban'
+      ORDER BY created_at DESC, id DESC LIMIT 1
+    )
+    WHERE b.is_banned = 1
+    ORDER BY h.created_at DESC
+  `).all();
+}
+
+/** Bans lifted in the last `days` days, newest first, for buyers not banned again since. */
+export function listRecentUnbans(days = 30) {
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  return getDb().prepare(`
+    SELECT h.buyer_id AS discord_id, b.name, h.reason, h.staff_id, h.created_at AS unbanned_at
+    FROM ban_history h JOIN buyers b ON b.discord_id = h.buyer_id
+    WHERE h.action = 'unban' AND h.created_at >= ? AND b.is_banned = 0
+    ORDER BY h.created_at DESC
+  `).all(since);
+}
+
 export function getBanHistory(discordId) {
   return getDb()
     .prepare('SELECT * FROM ban_history WHERE buyer_id = ? ORDER BY created_at DESC')

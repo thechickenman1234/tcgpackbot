@@ -43,12 +43,12 @@ export function buildPaymentEmbed(order, shipping) {
   }
 
   const paymentLines = [
-    `**PayID:** \`${config.payId}\` — pay **${formatAud(order.total_cents)}**`,
+    `**PayID:** \`${config.payId}\`, pay **${formatAud(order.total_cents)}**`,
   ];
   if (config.paypalEmail) {
     const paypalTotal = addPaypalSurcharge(order.total_cents);
     paymentLines.push(
-      `**PayPal:** \`${config.paypalEmail}\` — pay **${formatAud(paypalTotal)}** (includes PayPal's fee, buyer covers it)`,
+      `**PayPal:** \`${config.paypalEmail}\`, pay **${formatAud(paypalTotal)}** (includes PayPal's fee, buyer covers it)`,
     );
   }
 
@@ -61,10 +61,11 @@ export function buildPaymentEmbed(order, shipping) {
     .setColor(0x2ecc71)
     .setDescription(
       [
-        'Pick **one** payment method below and transfer the exact amount shown for it.',
-        '**Include the order reference** in the payment description, then post a screenshot of the transfer in this thread.',
+        '1. Pick **one** payment method below and transfer the exact amount shown for it.',
+        '2. **Include the order reference** in the payment description.',
+        '3. 📸 **Post a screenshot of your payment in this thread.**',
         '',
-        'Staff will manually confirm payment (no automatic matching in v1).',
+        "Your screenshot is how we confirm your order. Once it's here, your claim can't expire while staff check it.",
       ].join('\n'),
     )
     .addFields(
@@ -77,5 +78,5 @@ export function buildPaymentEmbed(order, shipping) {
       },
       { name: 'Ship to', value: formatShipTo(shipping), inline: false },
     )
-    .setFooter({ text: 'Missing the deadline without payment results in a claim ban.' });
+    .setFooter({ text: 'No payment screenshot by the deadline = claim cancelled and a claim ban.' });
 }

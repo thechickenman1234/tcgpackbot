@@ -209,6 +209,14 @@ export const commandDefinitions = [
     .addStringOption((o) => o.setName('reason').setDescription('Why the ban is lifted').setRequired(false)),
 
   new SlashCommandBuilder()
+    .setName('banned')
+    .setDescription('Staff: see everyone banned from claims, why, and when')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addBooleanOption((o) =>
+      o.setName('lifted').setDescription('Also show bans lifted in the last 30 days').setRequired(false),
+    ),
+
+  new SlashCommandBuilder()
     .setName('appeal')
     .setDescription('Ban appeals')
     .addSubcommand((sub) =>

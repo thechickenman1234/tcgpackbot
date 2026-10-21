@@ -113,6 +113,7 @@ Invalid / sold out / over limit → short error (or silent if banned).
 | `/order` | Look up an order by reference (e.g. `TCG-A1B2C3`) |
 | `/ban` | Manually ban someone from claiming |
 | `/unban` | Manually lift a ban (**never automatic**) |
+| `/banned` | Everyone banned from claims: when, why, by whom, and who has appealed. `lifted: True` adds bans lifted in the last 30 days |
 | `/appeal submit` | Buyer submits an appeal |
 | `/appeal reject` / `/appeal history` | Staff review tools |
 
@@ -176,7 +177,10 @@ the bot posts:
 
 1. Buyer gets PayID + exact amount + order reference in their private thread.
 2. They transfer and post a screenshot.
-3. You check amount + reference, then run **`/paid`** in that thread.
+3. The bot answers the screenshot with **Paid / Not paid** buttons, in the ticket and in the staff log channel. Check the amount + reference, then press **Paid** (or run **`/paid`** in the thread, same thing).
+   - While a screenshot is waiting, the order **can't expire and the buyer can't be banned**, however long it takes you to check.
+   - **Not paid** lifts that hold and tells the buyer to send the right screenshot. If their deadline has gone (or is under 2 hours away), they get 2 more hours and a reminder. After that the normal no-show ban applies.
+   - If a held order reaches its deadline before anyone has checked it, the bot pings the staff role once in the staff log, with the same buttons.
 4. After you ship, run **`/shipped`**.
 5. Thread auto-archives **7 days** after shipped.
 6. Need to void a pending claim? **`/cancel`** returns stock (no ban).
@@ -187,7 +191,7 @@ There is **no automatic bank matching**. Confirmation is always manual on purpos
 
 ## No-shows & bans
 
-If payment is **not** marked `/paid` before the deadline:
+If payment is **not** marked `/paid` before the deadline, and the buyer hasn't posted a payment screenshot that's waiting on staff:
 - buyer gets a reminder ~1 hour before (default)
 - then buyer is **banned from future claims**
 - incident is logged in the staff log channel

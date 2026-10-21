@@ -31,6 +31,7 @@ import { postShippingPanel } from '../handlers/shippingPanel.js';
 import { handleReelCommand } from '../handlers/reelLoop.js';
 import { handleAuditCommand } from '../handlers/auditCommand.js';
 import { handleInvoiceCommand, invoiceAutocomplete, sendPaidInvoice } from '../handlers/invoiceMaker.js';
+import { confirmPaid } from '../handlers/paymentProof.js';
 import {
   addProductToSale,
   cancelScheduledSale,
@@ -83,7 +84,6 @@ import {
   getPaidOrdersForBuyer,
   getRecentlyShippedOrders,
   getSyncableOrders,
-  markPaid,
   unshipOrder,
   markShipped,
   setTrackingCode,
@@ -93,6 +93,8 @@ import {
   getBanHistory,
   getBuyer,
   isBuyerBanned,
+  listBannedBuyers,
+  listRecentUnbans,
   recordAppeal,
   recordAppealOutcome,
   setBanned,
@@ -452,14 +454,12 @@ async function handlePaid(interaction) {
     return;
   }
 
-  const result = markPaid(order.id);
+  const result = await confirmPaid(interaction.client, order);
   if (!result.ok) {
     await interaction.reply({ content: `Cannot mark paid (status: \`${order.status}\`).`, ephemeral: true });
     return;
   }
-
-  pushToSheetInBackground([result.order], 'paid');
-  const gotRole = await grantBuyerRole(interaction.client, order.buyer_id);
+  const { gotRole } = result;
 
   await interaction.reply({
     content: `✅ Marked **${order.reference_code}** as **paid** (${formatAud(order.total_cents)}).`
@@ -619,6 +619,70 @@ async function handleUnban(interaction) {
   } catch {
     // DMs closed
   }
+}
+
+/** /banned: who can't claim right now, why and since when; optionally bans lifted lately. */
+async function handleBanned(interaction) {
+  if (!isStaff(interaction.member)) {
+    await interaction.reply({ content: 'Staff only.', ephemeral: true });
+    return;
+  }
+
+  const banned = listBannedBuyers();
+  const lifted = interaction.options.getBoolean('lifted') ? listRecentUnbans(30) : null;
+  const day = (iso) => (iso ? `<t:${Math.floor(new Date(iso).getTime() / 1000)}:d>` : 'date unknown');
+  const by = (staffId) => (staffId ? `by <@${staffId}>` : 'by the bot');
+  const who = (r) => `<@${r.discord_id}>${r.name ? ` (${r.name})` : ''}`;
+
+  const lines = banned.map((r) => `• ${who(r)} · ${day(r.banned_at)} · ${r.reason || 'no reason given'} · ${by(r.staff_id)}`
+    + (r.appeals ? ' · 📨 appealed' : ''));
+  const liftedLines = (lifted || []).map((r) => `• ${who(r)} · lifted ${day(r.unbanned_at)} · ${r.reason || 'no reason given'} · ${by(r.staff_id)}`);
+
+  // An embed holds about 4,000 characters; past that the full list goes in a text file.
+  const fit = (list, room) => {
+    const out = [];
+    let used = 0;
+    for (const line of list) {
+      if (used + line.length + 1 > room) {
+        out.push(`…and ${list.length - out.length} more (full list attached).`);
+        return { text: out.join('\n'), cut: true };
+      }
+      out.push(line);
+      used += line.length + 1;
+    }
+    return { text: out.join('\n'), cut: false };
+  };
+
+  const embeds = [];
+  const main = fit(lines, 3900);
+  embeds.push(new EmbedBuilder()
+    .setTitle(`🚫 Banned from claims: ${banned.length}`)
+    .setColor(0xc0392b)
+    .setDescription(main.text || 'Nobody is banned right now.')
+    .setFooter({ text: 'Lift a ban with /unban. A buyer\'s full history: /appeal history.' }));
+  let cut = main.cut;
+  if (lifted) {
+    const extra = fit(liftedLines, 1800);
+    cut = cut || extra.cut;
+    embeds.push(new EmbedBuilder()
+      .setTitle(`✅ Bans lifted in the last 30 days: ${lifted.length}`)
+      .setColor(0x27ae60)
+      .setDescription(extra.text || 'None.'));
+  }
+
+  const files = [];
+  if (cut) {
+    const plain = (r) => `${r.name || '(no name)'} [${r.discord_id}]`;
+    const text = [
+      `Banned from claims (${banned.length})`,
+      ...banned.map((r) => `${plain(r)} | ${r.banned_at?.slice(0, 10) || '?'} | ${r.reason || ''} | ${r.staff_id ? `staff ${r.staff_id}` : 'bot'}${r.appeals ? ' | appealed' : ''}`),
+      ...(lifted ? ['', `Lifted in the last 30 days (${lifted.length})`,
+        ...lifted.map((r) => `${plain(r)} | ${r.unbanned_at.slice(0, 10)} | ${r.reason || ''}`)] : []),
+    ].join('\n');
+    files.push(new AttachmentBuilder(Buffer.from(text, 'utf-8'), { name: 'banned.txt' }));
+  }
+
+  await interaction.reply({ embeds, files, ephemeral: true });
 }
 
 async function handleAppeal(interaction) {
@@ -1932,6 +1996,8 @@ export async function handleSlashCommand(interaction) {
       return handleBan(interaction);
     case 'unban':
       return handleUnban(interaction);
+    case 'banned':
+      return handleBanned(interaction);
     case 'appeal':
       return handleAppeal(interaction);
     case 'order':
