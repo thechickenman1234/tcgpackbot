@@ -68,12 +68,14 @@ export function logManualOrder({
   const now = new Date().toISOString();
   const reference = generateOrderReference();
 
+  // payment_deadline_at is NOT NULL on every order. It is already paid, so the
+  // deadline is simply now; the deadline job only ever looks at pending orders.
   const result = getDb().prepare(`
     INSERT INTO orders (
       reference_code, buyer_id, product_id, product_name, quantity,
       unit_price_cents, shipping_cents, total_cents, status,
-      claimed_at, paid_at, source
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'paid', ?, ?, ?)
+      claimed_at, paid_at, payment_deadline_at, source
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'paid', ?, ?, ?, ?)
   `).run(
     reference,
     buyerId,
@@ -83,6 +85,7 @@ export function logManualOrder({
     unitPriceCents,
     shippingCents,
     totalCents,
+    now,
     now,
     now,
     source,
