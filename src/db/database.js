@@ -274,6 +274,9 @@ export function initDatabase() {
   ensureColumn('orders', 'proof_message_id', 'TEXT');
   // When staff were pinged that a held order went past its deadline unchecked.
   ensureColumn('orders', 'proof_overdue_pinged_at', 'TEXT');
+  // Staff's own text for the shipping label's reference box (/label), when
+  // an order changed after claiming. Null prints the default.
+  ensureColumn('orders', 'label_reference', 'TEXT');
   db.exec('CREATE INDEX IF NOT EXISTS idx_orders_batch ON orders(label_batch_id)');
 
   return db;

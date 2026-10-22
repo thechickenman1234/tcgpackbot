@@ -209,6 +209,14 @@ export const commandDefinitions = [
     .addStringOption((o) => o.setName('reason').setDescription('Why the ban is lifted').setRequired(false)),
 
   new SlashCommandBuilder()
+    .setName('label')
+    .setDescription("Change what an order's shipping label says, e.g. after the order changes")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addStringOption((o) =>
+      o.setName('reference').setDescription('The order, if not run inside its ticket').setRequired(false).setAutocomplete(true),
+    ),
+
+  new SlashCommandBuilder()
     .setName('banned')
     .setDescription('Staff: see everyone banned from claims, why, and when')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)

@@ -32,6 +32,7 @@ import { handleReelCommand } from '../handlers/reelLoop.js';
 import { handleAuditCommand } from '../handlers/auditCommand.js';
 import { handleInvoiceCommand, invoiceAutocomplete, sendPaidInvoice } from '../handlers/invoiceMaker.js';
 import { confirmPaid } from '../handlers/paymentProof.js';
+import { handleLabelCommand, labelAutocomplete } from '../handlers/labelEditor.js';
 import {
   addProductToSale,
   cancelScheduledSale,
@@ -934,6 +935,11 @@ async function handleShipAll(interaction) {
  */
 export async function handleAutocomplete(interaction) {
   const typed = (interaction.options.getFocused() || '').toLowerCase();
+
+  if (interaction.commandName === 'label') {
+    await labelAutocomplete(interaction, typed);
+    return;
+  }
 
   if (interaction.commandName === 'logsale') {
     const choices = listAllProducts()
@@ -1998,6 +2004,8 @@ export async function handleSlashCommand(interaction) {
       return handleUnban(interaction);
     case 'banned':
       return handleBanned(interaction);
+    case 'label':
+      return handleLabelCommand(interaction);
     case 'appeal':
       return handleAppeal(interaction);
     case 'order':

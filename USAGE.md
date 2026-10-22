@@ -113,6 +113,7 @@ Invalid / sold out / over limit → short error (or silent if banned).
 | `/order` | Look up an order by reference (e.g. `TCG-A1B2C3`) |
 | `/ban` | Manually ban someone from claiming |
 | `/unban` | Manually lift a ban (**never automatic**) |
+| `/label` | Change what an order's shipping label says (run in its ticket, or pick the order). Opens a box with the current text; clear it to go back to the default. Topping up the order resets it |
 | `/banned` | Everyone banned from claims: when, why, by whom, and who has appealed. `lifted: True` adds bans lifted in the last 30 days |
 | `/appeal submit` | Buyer submits an appeal |
 | `/appeal reject` / `/appeal history` | Staff review tools |

@@ -18,6 +18,7 @@ import { SHIPPING_PREFIX, handleShippingPanel } from './shippingPanel.js';
 import { REEL_PREFIX, handleReelInteraction } from './reelLoop.js';
 import { INVOICE_PREFIX, handleInvoiceInteraction } from './invoiceMaker.js';
 import { PAYPROOF_PREFIX, handlePaymentProofButton } from './paymentProof.js';
+import { LABEL_PREFIX, handleLabelModal } from './labelEditor.js';
 
 export async function handleInteractionCreate(interaction) {
   try {
@@ -51,6 +52,12 @@ export async function handleInteractionCreate(interaction) {
     // Video feedback loops: the Log results button and its pop-up.
     if ((interaction.isButton() || interaction.isModalSubmit()) && interaction.customId.startsWith(REEL_PREFIX)) {
       await handleReelInteraction(interaction);
+      return;
+    }
+
+    // The /label pop-up.
+    if (interaction.isModalSubmit() && interaction.customId.startsWith(LABEL_PREFIX)) {
+      await handleLabelModal(interaction);
       return;
     }
 

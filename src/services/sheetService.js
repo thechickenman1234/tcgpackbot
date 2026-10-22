@@ -3,6 +3,7 @@ import { getBuyer } from './buyerService.js';
 import { labelOrders } from './shippingService.js';
 import { groupIntoParcels } from './parcelService.js';
 import { listAllProducts } from './productService.js';
+import { labelReferenceFor } from './labelText.js';
 
 /**
  * Pushes orders into the accounting spreadsheet.
@@ -73,8 +74,7 @@ export function labelRowsToCsv(rows) {
 export function labelRowsByBuyer(orders) {
   return groupIntoParcels(orders).map((group) => {
     const buyer = getBuyer(group[0].buyer_id);
-    const contents = group.map((o) => `${o.quantity}x ${o.product_name}`).join(' + ');
-    const reference = `${group.map((o) => o.reference_code).join(' + ')}: ${contents}`;
+    const reference = group.map(labelReferenceFor).join(' + ');
 
     return {
       to_name: buyer?.name || '',

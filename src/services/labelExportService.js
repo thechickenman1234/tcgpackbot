@@ -1,6 +1,7 @@
 import { config } from '../config.js';
 import { getBuyer } from './buyerService.js';
 import { getAllPaidOrders, getPaidUnexportedOrders, markExported } from './orderService.js';
+import { labelReferenceFor } from './labelText.js';
 
 const CSV_HEADER = [
   'to_name', 'to_business_name', 'to_street', 'to_street2', 'to_city', 'to_state', 'to_postcode',
@@ -19,8 +20,7 @@ function csvEscape(value) {
 function orderToRow(order) {
   const buyer = getBuyer(order.buyer_id);
   const type = order.shipping_method === 'express' ? 'EXPRESS' : 'STANDARD';
-  const contents = `${order.quantity}x ${order.product_name}`;
-  const referenceWithContents = `${order.reference_code} — ${contents}`;
+  const referenceWithContents = labelReferenceFor(order);
 
   const fields = [
     buyer?.name || '',

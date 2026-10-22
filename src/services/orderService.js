@@ -156,7 +156,8 @@ export function topUpPendingOrder({ order, product, quantity, claimMessageId = n
         shipping_cents = ?,
         total_cents = ?,
         product_name = ?,
-        claim_message_id = COALESCE(?, claim_message_id)
+        claim_message_id = COALESCE(?, claim_message_id),
+        label_reference = NULL
     WHERE id = ? AND status = 'pending'
   `).run(
     newQuantity,
@@ -329,6 +330,20 @@ export function clearProof(orderId, minDeadlineIso) {
     WHERE id = ? AND status = 'pending'
   `).run(minDeadlineIso, orderId);
   return getOrderById(orderId);
+}
+
+/** Staff's own label text for an order (/label); null goes back to the default. */
+export function setLabelReference(orderId, text) {
+  getDb().prepare('UPDATE orders SET label_reference = ? WHERE id = ?').run(text || null, orderId);
+  return getOrderById(orderId);
+}
+
+/** Orders still to be packed (pending or paid), newest first. */
+export function listOpenOrders(limit = 300) {
+  return getDb().prepare(`
+    SELECT * FROM orders WHERE status IN ('pending', 'paid')
+    ORDER BY claimed_at DESC LIMIT ?
+  `).all(limit);
 }
 
 /** Held orders (screenshot posted) now past their deadline that staff haven't been pinged about. */
