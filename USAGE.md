@@ -115,6 +115,9 @@ Invalid / sold out / over limit → short error (or silent if banned).
 | `/unban` | Manually lift a ban (**never automatic**) |
 | `/label` | Change what an order's shipping label says (run in its ticket, or pick the order). Opens a box with the current text; clear it to go back to the default. Topping up the order resets it |
 | `/banned` | Everyone banned from claims: when, why, by whom, and who has appealed. `lifted: True` adds bans lifted in the last 30 days |
+| `/dashboard` | Open the profit dashboard on your phone: type in costs (estimate or real) and other expenses, see profit by week, month and product. The button works once within 15 minutes; the device then stays signed in for 30 days |
+| `/cost` | Same as the dashboard's cost box: what one unit cost you, landed. Counts as the real cost unless `estimate: True`. `fix: True` re-prices orders already sold, for a cost typed wrong. `/newsale` takes `cost` too (as the estimate) |
+| `/profit` | Sales, stock cost, postage and profit for today, this or last week, this or last month, 30 days or all time. Optional `product` |
 | `/appeal submit` | Buyer submits an appeal |
 | `/appeal reject` / `/appeal history` | Staff review tools |
 
@@ -149,6 +152,27 @@ Or:
 Price = per unit.  
 Shipping = **flat per order** (added once to the total; top-ups do not add shipping again).  
 Limit = **max units per Discord user** for that product (optional).
+
+---
+
+## Profit
+
+Profit is worked out from what the bot already knows, so nothing is typed in per order:
+
+- **Sales**: each paid order's total, including the shipping the buyer paid.
+- **Stock cost**: the product's cost per unit x quantity. It starts as the **estimate** from the quote (Claude adds it when it queues a sale, or `cost` on `/newsale`). When the real figure is known (bulk discounts, the actual freight), type it on the dashboard as the **real cost**: it replaces the estimate on every order of that batch. A total works too: `3524/40` is 3524 dollars over 40 boxes.
+- **Postage**: the Label Pro label each order took, $4 standard or $6.50 express (`LABEL_COST_STANDARD` / `LABEL_COST_EXPRESS` to change). Orders with no shipping take no label.
+- Lachy's own test orders are left out (`PROFIT_EXCLUDE_BUYERS`).
+
+A product with no cost is never guessed: its sales show apart under "Not counted yet" until `/cost` is set.
+
+- **Other expenses** (packaging, fees, tools) go on the dashboard with a date and come off that period's profit. Not stock or labels: those are already counted per order.
+
+**Automatic, in the staff log:** Monday 9am, last week's profit plus anything still on an estimated cost. Daily 10am, a reminder listing anything sold in the last 14 days with no cost yet. Both link to the dashboard.
+
+**The dashboard** lives at the bot's own address, `/dash`, on the ops door's port. It only opens with a `/dashboard` link (one use, 15 minutes), which leaves a 30-day sign-in on that device. Rotating `OPS_SECRET` signs every device out. Every change made on it is posted to the staff log.
+
+A new **estimate** on a product that already has a cost is treated as a new wave: orders already claimed keep the cost they sold at. A **real cost** always applies to the current batch.
 
 ---
 

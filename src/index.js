@@ -22,6 +22,7 @@ import {
 import { startGiveawayBoardJob } from './services/giveawayBoard.js';
 import { startScheduledMessagesJob } from './jobs/scheduledMessages.js';
 import { startScheduledSalesJob } from './jobs/scheduledSales.js';
+import { startProfitReportJob } from './jobs/profitReport.js';
 import { startReelReminderJob } from './handlers/reelLoop.js';
 import { reportBuyerRoleStatus } from './services/buyerRoleService.js';
 import { startOpsServer } from './ops/opsServer.js';
@@ -62,6 +63,7 @@ client.once('ready', async () => {
   startScheduledMessagesJob(client);
   startScheduledSalesJob(client);
   startReelReminderJob(client);
+  startProfitReportJob(client);
   startOpsServer(client);
   await reportBuyerRoleStatus(client);
 });

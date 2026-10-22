@@ -11,12 +11,15 @@ import {
   findProductByName,
   listAllProducts,
   setProductActive,
+  setProductCost,
   setProductDescription,
   setProductMaxPerBuyer,
   setProductPrice,
   setProductShipping,
   updateProductStock,
 } from '../services/productService.js';
+import { PERIODS, money, profitFor } from '../services/profitService.js';
+import { handleDashboard } from '../dashboard/dashboard.js';
 import {
   addProductToSale,
   cancelScheduledSale,
@@ -264,6 +267,12 @@ const routes = {
       // The scheduled sale decides when claims open, not the product.
       setProductActive(product.id, false);
     }
+    // What one cost, landed, so /profit knows without anyone typing it later.
+    if (body.cost !== undefined && body.cost !== null) {
+      const cost = Number(body.cost);
+      if (!(cost >= 0)) fail('cost must be a number of dollars, e.g. 101.50.');
+      setProductCost(product.id, Math.round(cost * 100));
+    }
 
     const lines = Array.isArray(body.lines) ? body.lines.filter(Boolean).slice(0, 3) : [];
     product = setProductDescription(product.id, {
@@ -397,6 +406,24 @@ const routes = {
     };
   },
 
+  /** Same as /cost: what one unit of a product cost, landed. */
+  'POST /ops/cost': async (_client, body) => {
+    const product = findProductByName(String(body.name ?? '').trim());
+    if (!product) fail('No product by that name. GET /ops/products lists them.');
+    const cost = Number(body.cost);
+    if (!(cost >= 0)) fail('cost must be a number of dollars, e.g. 101.50.');
+    const actual = body.actual !== false;
+    setProductCost(product.id, Math.round(cost * 100), { actual, fix: body.fix === true });
+    return { text: `${product.name} now costs ${money(Math.round(cost * 100))} each (${actual ? 'real cost' : 'estimate'}).` };
+  },
+
+  /** Same as /profit: sales, costs and profit for a period (?period=week&product=storm). */
+  'GET /ops/profit': async (_client, _body, query) => {
+    const period = query.get('period') || 'week';
+    if (!PERIODS[period]) fail(`period must be one of: ${Object.keys(PERIODS).join(', ')}.`);
+    return profitFor(period, { product: query.get('product') || null });
+  },
+
   /** Lifetime sales and the member count, for the website's trust numbers. */
   'GET /ops/stats': async (client, _body, query) => {
     const exclude = String(query.get('exclude') || '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -524,6 +551,11 @@ export function startOpsServer(client) {
         console.error('Public sales feed failed:', err);
         return res.end(JSON.stringify({ sales: [], now: new Date().toISOString() }));
       }
+    }
+
+    // The profit dashboard has its own sign-in (a link from /dashboard, then a cookie).
+    if (url.pathname === '/dash' || url.pathname.startsWith('/dash/')) {
+      return handleDashboard(client, req, res, url);
     }
 
     const address = clientAddress(req);

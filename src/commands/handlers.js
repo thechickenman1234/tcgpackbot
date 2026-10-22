@@ -33,6 +33,7 @@ import { handleAuditCommand } from '../handlers/auditCommand.js';
 import { handleInvoiceCommand, invoiceAutocomplete, sendPaidInvoice } from '../handlers/invoiceMaker.js';
 import { confirmPaid } from '../handlers/paymentProof.js';
 import { handleLabelCommand, labelAutocomplete } from '../handlers/labelEditor.js';
+import { costAutocomplete, handleCostCommand, handleDashboardCommand, handleProfitCommand } from '../handlers/profitCommands.js';
 import {
   addProductToSale,
   cancelScheduledSale,
@@ -66,6 +67,7 @@ import {
   listAllProducts,
   parseTiersInput,
   setProductActive,
+  setProductCost,
   setProductMaxPerBuyer,
   setProductPrice,
   setProductDescription,
@@ -941,6 +943,11 @@ export async function handleAutocomplete(interaction) {
     return;
   }
 
+  if (interaction.commandName === 'cost' || interaction.commandName === 'profit') {
+    await costAutocomplete(interaction, typed);
+    return;
+  }
+
   if (interaction.commandName === 'logsale') {
     const choices = listAllProducts()
       .filter((p) => p.name.toLowerCase().includes(typed))
@@ -1366,6 +1373,8 @@ async function handleNewSale(interaction) {
     // claims actually open.
     setProductActive(product.id, false);
   }
+  const cost = interaction.options.getNumber('cost');
+  if (cost !== null) setProductCost(product.id, Math.round(cost * 100));
 
   const lines = ['line1', 'line2'].map((n) => interaction.options.getString(n)).filter(Boolean);
   product = setProductDescription(product.id, {
@@ -2006,6 +2015,12 @@ export async function handleSlashCommand(interaction) {
       return handleBanned(interaction);
     case 'label':
       return handleLabelCommand(interaction);
+    case 'cost':
+      return handleCostCommand(interaction);
+    case 'profit':
+      return handleProfitCommand(interaction);
+    case 'dashboard':
+      return handleDashboardCommand(interaction);
     case 'appeal':
       return handleAppeal(interaction);
     case 'order':

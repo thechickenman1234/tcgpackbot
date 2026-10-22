@@ -56,4 +56,15 @@ export const config = {
   // Railway hands the service its port in PORT.
   opsSecret: optional('OPS_SECRET', ''),
   opsPort: Number(optional('PORT', '8080')),
+  // The bot's own web address, for links to the dashboard. Railway sets
+  // RAILWAY_PUBLIC_DOMAIN on a service that has a public domain.
+  publicUrl: optional('PUBLIC_URL', process.env.RAILWAY_PUBLIC_DOMAIN
+    ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+    : 'https://tcgpackbot-production.up.railway.app').replace(/\/+$/, ''),
+  // What one Label Pro label costs, for the postage line in /profit.
+  labelCostStandardCents: Math.round(Number(optional('LABEL_COST_STANDARD', '4')) * 100),
+  labelCostExpressCents: Math.round(Number(optional('LABEL_COST_EXPRESS', '6.5')) * 100),
+  // Accounts whose orders are tests, never sales (Lachy's own), left out of /profit.
+  profitExcludeBuyerIds: optional('PROFIT_EXCLUDE_BUYERS', '315063309550354434')
+    .split(',').map((s) => s.trim()).filter(Boolean),
 };

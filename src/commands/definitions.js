@@ -225,6 +225,51 @@ export const commandDefinitions = [
     ),
 
   new SlashCommandBuilder()
+    .setName('cost')
+    .setDescription('Staff: set what one unit of a product cost you, so /profit is right')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addStringOption((o) =>
+      o.setName('product').setDescription('Which product').setRequired(true).setAutocomplete(true),
+    )
+    .addNumberOption((o) =>
+      o.setName('amount').setDescription('What one cost you, landed (supplier, freight, fees), in AUD').setRequired(true).setMinValue(0),
+    )
+    .addBooleanOption((o) =>
+      o.setName('estimate').setDescription('True if this is only the estimate from the quote, not the real cost yet').setRequired(false),
+    )
+    .addBooleanOption((o) =>
+      o.setName('fix').setDescription('Typed it wrong before? Also re-price orders already sold at the old cost').setRequired(false),
+    ),
+
+  new SlashCommandBuilder()
+    .setName('dashboard')
+    .setDescription('Staff: open the profit dashboard (costs, expenses, profit) on this device')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+
+  new SlashCommandBuilder()
+    .setName('profit')
+    .setDescription('Staff: sales, costs and profit for a period')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addStringOption((o) =>
+      o
+        .setName('period')
+        .setDescription('Which period (default this week)')
+        .setRequired(false)
+        .addChoices(
+          { name: 'Today', value: 'today' },
+          { name: 'This week', value: 'week' },
+          { name: 'Last week', value: 'last_week' },
+          { name: 'This month', value: 'month' },
+          { name: 'Last month', value: 'last_month' },
+          { name: 'Last 30 days', value: '30d' },
+          { name: 'All time', value: 'all' },
+        ),
+    )
+    .addStringOption((o) =>
+      o.setName('product').setDescription('Just one product').setRequired(false).setAutocomplete(true),
+    ),
+
+  new SlashCommandBuilder()
     .setName('appeal')
     .setDescription('Ban appeals')
     .addSubcommand((sub) =>
@@ -348,6 +393,9 @@ export const commandDefinitions = [
     )
     .addIntegerOption((o) =>
       o.setName('limit').setDescription('Max per buyer. Leave out for no limit.').setRequired(false).setMinValue(1),
+    )
+    .addNumberOption((o) =>
+      o.setName('cost').setDescription('What one cost you, landed, in AUD (for /profit)').setRequired(false).setMinValue(0),
     )
     .addStringOption((o) =>
       o.setName('start').setDescription('Start time (default 8:00 pm)').setRequired(false).setAutocomplete(true),

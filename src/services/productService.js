@@ -59,6 +59,37 @@ export function setProductMaxPerBuyer(productId, maxPerBuyer) {
   `).run(maxPerBuyer, nowIso(), productId);
 }
 
+/**
+ * What one unit cost, landed. Two kinds:
+ *
+ *   estimate  from the quote, set when the sale is queued
+ *   actual    the real figure once the discounts and freight are known; it
+ *             replaces the estimate on every order still using it
+ *
+ * A new estimate on a product that already has a cost is a new wave: the
+ * orders already claimed keep the cost they had, so a dearer second wave
+ * can't rewrite the first wave's profit. `fix` re-prices every order of the
+ * product instead, for a cost typed wrong.
+ */
+export function setProductCost(productId, costCents, { actual = false, fix = false } = {}) {
+  const db = getDb();
+  const product = getProductById(productId);
+  if (!product) return null;
+  db.transaction(() => {
+    if (fix) {
+      db.prepare('UPDATE orders SET unit_cost_cents = NULL, unit_cost_actual = NULL WHERE product_id = ?').run(productId);
+    } else if (!actual && product.cost_cents != null && (product.cost_cents !== costCents || product.cost_actual)) {
+      db.prepare(`
+        UPDATE orders SET unit_cost_cents = ?, unit_cost_actual = ?
+        WHERE product_id = ? AND unit_cost_cents IS NULL
+      `).run(product.cost_cents, product.cost_actual, productId);
+    }
+    db.prepare('UPDATE products SET cost_cents = ?, cost_actual = ?, updated_at = ? WHERE id = ?')
+      .run(costCents, actual ? 1 : 0, nowIso(), productId);
+  })();
+  return getProductById(productId);
+}
+
 export function getProductMaxPerBuyer(product) {
   const n = product?.max_per_buyer;
   if (n == null || n <= 0) return null;

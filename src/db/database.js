@@ -277,6 +277,27 @@ export function initDatabase() {
   // Staff's own text for the shipping label's reference box (/label), when
   // an order changed after claiming. Null prints the default.
   ensureColumn('orders', 'label_reference', 'TEXT');
+  // What one unit cost, landed (supplier, freight, fees), for /profit. Set on
+  // the product with /cost or when its sale is queued. An order gets its own
+  // copy only once the product's cost changes, so a dearer second wave of the
+  // same product can't rewrite the profit on the first.
+  ensureColumn('products', 'cost_cents', 'INTEGER');
+  ensureColumn('orders', 'unit_cost_cents', 'INTEGER');
+  // 0 while the cost is the estimate from the quote, 1 once the real cost
+  // (after bulk discounts, the actual freight) has been put in.
+  ensureColumn('products', 'cost_actual', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('orders', 'unit_cost_actual', 'INTEGER');
+  // Money out that isn't stock or labels (packaging, fees, tools), so the
+  // dashboard's profit can be after everything.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS expenses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      spent_on TEXT NOT NULL,
+      amount_cents INTEGER NOT NULL,
+      what TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )
+  `);
   db.exec('CREATE INDEX IF NOT EXISTS idx_orders_batch ON orders(label_batch_id)');
 
   return db;
