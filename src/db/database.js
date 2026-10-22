@@ -287,6 +287,19 @@ export function initDatabase() {
   // (after bulk discounts, the actual freight) has been put in.
   ensureColumn('products', 'cost_actual', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn('orders', 'unit_cost_actual', 'INTEGER');
+  // Each parcel an order went out in, read off its dropped label. Usually one;
+  // more when only part of an order had arrived and the rest went later.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS order_parcels (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER NOT NULL,
+      tracking_code TEXT NOT NULL UNIQUE,
+      quantity INTEGER NOT NULL,
+      posted_at TEXT NOT NULL,
+      FOREIGN KEY (order_id) REFERENCES orders(id)
+    )
+  `);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_parcels_order ON order_parcels(order_id)');
   // Money out that isn't stock or labels (packaging, fees, tools), so the
   // dashboard's profit can be after everything.
   db.exec(`

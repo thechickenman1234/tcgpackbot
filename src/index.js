@@ -9,6 +9,7 @@ import { handleClaimMessage } from './services/claimService.js';
 import { handleInteractionCreate } from './handlers/interactionCreate.js';
 import { handleAppealsChannelMessage } from './handlers/appealsChannel.js';
 import { handlePaymentProofMessage } from './handlers/paymentProof.js';
+import { handleLabelDropMessage } from './handlers/labelDrop.js';
 import { startPaymentDeadlineJob } from './jobs/paymentDeadline.js';
 import { startAutoArchiveJob } from './jobs/autoArchive.js';
 import { registerSlashCommands } from './registerCommands.js';
@@ -78,6 +79,7 @@ client.on('messageCreate', async (message) => {
     await handleClaimMessage(message);
     await handleAppealsChannelMessage(message);
     await handlePaymentProofMessage(message);
+    await handleLabelDropMessage(message);
   } catch (err) {
     console.error('messageCreate error:', err);
   }

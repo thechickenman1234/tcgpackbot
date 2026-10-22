@@ -12,8 +12,12 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@zxing/library": "^0.21.3",
     "better-sqlite3": "^11.8.1",
     "discord.js": "^14.18.0",
-    "dotenv": "^16.4.7"
+    "dotenv": "^16.4.7",
+    "jpeg-js": "^0.4.4",
+    "pngjs": "^7.0.0",
+    "tesseract.js": "^5.1.1"
   }
 }

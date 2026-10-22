@@ -19,6 +19,7 @@ import { REEL_PREFIX, handleReelInteraction } from './reelLoop.js';
 import { INVOICE_PREFIX, handleInvoiceInteraction } from './invoiceMaker.js';
 import { PAYPROOF_PREFIX, handlePaymentProofButton } from './paymentProof.js';
 import { LABEL_PREFIX, handleLabelModal } from './labelEditor.js';
+import { LABEL_DROP_PREFIX, handleLabelDropInteraction } from './labelDrop.js';
 
 export async function handleInteractionCreate(interaction) {
   try {
@@ -58,6 +59,12 @@ export async function handleInteractionCreate(interaction) {
     // The /label pop-up.
     if (interaction.isModalSubmit() && interaction.customId.startsWith(LABEL_PREFIX)) {
       await handleLabelModal(interaction);
+      return;
+    }
+
+    // The buttons under a dropped batch of shipping labels.
+    if ((interaction.isButton() || interaction.isStringSelectMenu()) && interaction.customId.startsWith(LABEL_DROP_PREFIX)) {
+      await handleLabelDropInteraction(interaction);
       return;
     }
 

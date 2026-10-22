@@ -155,6 +155,22 @@ Limit = **max units per Discord user** for that product (optional).
 
 ---
 
+## Tracking from label PDFs
+
+After a post office run, drop the Label Pro label PDFs (or screenshots or photos of labels) in the shipping channel: the one with the shipping panel, or any channel with "ship" or "label" in its name. Staff only.
+
+For each label the bot reads:
+- the **tracking number** from the square barcode (the AusPost article id), and
+- the **To: name** and the **Ref:** line from the picture itself (Label Pro labels are pictures, so this is read like a photo).
+
+It matches the label to the waiting order by the `TCG-` reference on the Ref line (a misread letter or two is fine), or by the buyer's name when there's no reference. Then it posts the tracking in the buyer's ticket, marks the order posted and syncs the sheet. One reply lists what it did. Anything it can't be sure of comes back as buttons: two waiting orders for the same name, or a label that matches nothing.
+
+**Part of an order:** if a label's Ref says fewer than the order (e.g. "1x storm" on a 2x order, edited with `/label`), that parcel goes out as part of the order. The buyer is told what's in this parcel and what's still to come, and the rest goes back on **Print labels** with a label reading "(rest)". Forgot to edit the label? Tap **Part only** under the reply and pick how many were in it. When the rest is posted and its label dropped, the buyer gets "the rest of your order is on its way" and the order is marked posted.
+
+Dropping the same label twice does nothing the second time. The old 🔢 Add tracking paste still works.
+
+---
+
 ## Profit
 
 Profit is worked out from what the bot already knows, so nothing is typed in per order:

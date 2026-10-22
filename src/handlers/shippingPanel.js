@@ -27,6 +27,7 @@ import {
   unprintedForProduct,
 } from '../services/shippingService.js';
 import { applyTrackingPaste, trackingReply } from '../services/trackingService.js';
+import { setMeta } from '../services/metaService.js';
 
 /**
  * The shipping panel: three buttons that replace remembering commands.
@@ -65,12 +66,15 @@ export async function postShippingPanel(interaction) {
     return;
   }
   await interaction.reply({ content: 'Posting the shipping panel here. Pin it so it stays at the top.', ephemeral: true });
+  // Label PDFs dropped in this channel get read and sent to buyers (labelDrop.js).
+  setMeta('shipping_panel_channel', interaction.channelId);
   await interaction.channel.send({
     content: [
       '## 📦 Shipping',
       '**🏷️ Print labels**: pick a drop and get its label file. Only that drop.',
       '**📦 Mark posted**: tick off what went out. A whole batch or just some.',
       '**🔢 Add tracking**: paste the codes. Those parcels are marked posted and buyers are told.',
+      '**📄 Or just drop the Label Pro PDFs here**: the bot reads each label, tells every buyer and marks it posted.',
     ].join('\n'),
     components: [panelButtons()],
   });
