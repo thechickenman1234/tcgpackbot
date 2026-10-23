@@ -25,6 +25,7 @@ import { startScheduledMessagesJob } from './jobs/scheduledMessages.js';
 import { startScheduledSalesJob } from './jobs/scheduledSales.js';
 import { startProfitReportJob } from './jobs/profitReport.js';
 import { recordChatMessage, startMemberSnapshotJob } from './services/activityService.js';
+import { startWiseSyncJob } from './services/wiseService.js';
 import { startReelReminderJob } from './handlers/reelLoop.js';
 import { reportBuyerRoleStatus } from './services/buyerRoleService.js';
 import { startOpsServer } from './ops/opsServer.js';
@@ -67,6 +68,7 @@ client.once('ready', async () => {
   startReelReminderJob(client);
   startProfitReportJob(client);
   startMemberSnapshotJob(client);
+  startWiseSyncJob();
   startOpsServer(client);
   await reportBuyerRoleStatus(client);
 });

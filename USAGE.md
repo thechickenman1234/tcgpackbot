@@ -172,6 +172,24 @@ Dropping the same label twice does nothing the second time. The old 🔢 Add tra
 
 ---
 
+## Money in and out: Wise and wholesale
+
+**Wise:** with a read-only token in `WISE_API_TOKEN` on Railway (Wise: Settings → API tokens → Add new token → Read only), the bot pulls every Wise payment every 3 hours (and on **Sync now** on the dashboard), back to `WISE_SINCE` (default 1 Jul 2026). Payments to or from `WISE_OWN_NAME` (default Lachlan Nguyen) are tagged *not business* on arrival. Everything else waits under **Money in and out → To tag**, once each:
+
+- **Stock**: pick the product and how many units it paid for. The product's real cost per unit becomes this payment (plus any others within 3 days, for a split payment) plus freight tagged to it, over those units.
+- **Freight**: the same, for shipping, added on top. Freight that isn't for one product: tag it **Expense**.
+- **Expense**: becomes an Other expense on that day.
+- **Wholesale sale** (money in): fill in the product and how many; it becomes a wholesale sale.
+- **Not business**: left out.
+
+A cancelled or bounced payment never shows. **Undo** puts a payment back on the list (a real cost it set stays). A daily 10am staff-log note says when payments are waiting. `GET /ops/wise` syncs and reports what came back, for checking the token.
+
+**Wholesale sales** made outside the bot: **Add a wholesale sale** on the dashboard (customer, product or a new product name, how many, total paid, date, already sent or not). It becomes a paid order with source *wholesale*, so it's in sales, profit, buyers and channels like any other. Not sent yet: it lands on the Labels list. A new product name is added switched off, never on sale.
+
+**Cash check:** next to profit (what sold, at its cost), the Money section shows money in (sales) against money out of Wise (tagged stock, freight, expenses, plus labels), and how much went out of Wise untagged. Payments made outside Wise (NAB international transfers, cards) aren't in it.
+
+---
+
 ## Profit
 
 Profit is worked out from what the bot already knows, so nothing is typed in per order:

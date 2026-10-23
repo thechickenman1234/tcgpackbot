@@ -64,6 +64,14 @@ export const config = {
   // What one Label Pro label costs, for the postage line in /profit.
   labelCostStandardCents: Math.round(Number(optional('LABEL_COST_STANDARD', '4')) * 100),
   labelCostExpressCents: Math.round(Number(optional('LABEL_COST_EXPRESS', '6.5')) * 100),
+  // A read-only Wise API token, so the dashboard can list every payment in
+  // and out of Wise for tagging. Off when unset. WISE_SINCE is how far back.
+  wiseToken: optional('WISE_API_TOKEN', ''),
+  wiseSince: optional('WISE_SINCE', '2026-07-01'),
+  // Payments to or from this name are Lachy moving his own money: not business.
+  wiseOwnName: optional('WISE_OWN_NAME', 'Lachlan Nguyen'),
+  // For a payment Wise only gives in yen, the AUD it's roughly worth.
+  jpyPerAud: Number(optional('JPY_PER_AUD', '110')),
   // Accounts whose orders are tests, never sales (Lachy's own), left out of /profit.
   profitExcludeBuyerIds: optional('PROFIT_EXCLUDE_BUYERS', '315063309550354434')
     .split(',').map((s) => s.trim()).filter(Boolean),

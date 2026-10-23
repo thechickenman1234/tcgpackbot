@@ -3,13 +3,15 @@ import { logToStaff } from '../services/staffLog.js';
 import { ZONE } from '../services/scheduleService.js';
 import { estimatedCosts, missingCosts, profitFor, profitLines } from '../services/profitService.js';
 import { dashboardUrl } from '../dashboard/dashboard.js';
+import { untaggedPayments } from '../services/moneyService.js';
 
 /**
  * Profit without having to ask for it, in the staff log:
  *
  *   Monday 9am   last week's sales, costs and profit, plus anything still on
  *                the quote's estimated cost
- *   daily 10am   products that sold with no cost yet, so the numbers stay right
+ *   daily 10am   products that sold with no cost yet, so the numbers stay right,
+ *                and Wise payments still waiting to be tagged
  *
  * Each runs once a day at most: the day is stored before posting, so a
  * restart or a failed post can never send it twice.
@@ -62,6 +64,18 @@ export async function runProfitReports(client, now = new Date()) {
           '',
           openLine(),
         ].join('\n'),
+        color: 0xf1c40f,
+      });
+    }
+    const toTag = untaggedPayments(500);
+    if (toTag.length) {
+      await logToStaff(client, {
+        title: '💸 Wise payments to tag',
+        description: [
+          `${toTag.length} payment${toTag.length === 1 ? '' : 's'} in or out of Wise ${toTag.length === 1 ? "isn't" : "aren't"} tagged yet, `
+            + 'so your profit and real costs may be missing them.',
+          openLine(),
+        ].join(' '),
         color: 0xf1c40f,
       });
     }

@@ -332,6 +332,34 @@ export function initDatabase() {
     );
   `);
   db.exec('CREATE INDEX IF NOT EXISTS idx_member_joins_member ON member_joins(member_id)');
+  // Every payment in or out of Wise (wiseService), and what Lachy tagged it
+  // as on the dashboard: stock, freight, expense, wholesale or not business.
+  // Amounts are hundredths of their currency (cents, or yen x 100).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS wise_payments (
+      id TEXT PRIMARY KEY,
+      direction TEXT NOT NULL CHECK (direction IN ('in', 'out')),
+      happened_at TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      currency TEXT NOT NULL,
+      aud_cents INTEGER,
+      aud_estimated INTEGER NOT NULL DEFAULT 0,
+      other_amount INTEGER,
+      other_currency TEXT,
+      counterparty TEXT,
+      reference TEXT,
+      status TEXT,
+      tag TEXT,
+      product_id INTEGER,
+      units INTEGER,
+      expense_id INTEGER,
+      order_id INTEGER,
+      note TEXT,
+      tagged_at TEXT,
+      synced_at TEXT NOT NULL
+    )
+  `);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_wise_payments_when ON wise_payments(happened_at)');
   // Money out that isn't stock or labels (packaging, fees, tools), so the
   // dashboard's profit can be after everything.
   db.exec(`

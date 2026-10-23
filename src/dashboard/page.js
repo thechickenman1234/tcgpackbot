@@ -206,6 +206,7 @@ function renderAlerts() {
   const items = [];
   const a = (text, href, soft) => items.push(el('a', { class: 'alert' + (soft ? ' soft' : ''), href }, text));
   if (n.costsMissing) a(plural(n.costsMissing, 'product') + ' sold with no cost', '#costs');
+  if (state.money && state.money.untagged.length) a(plural(state.money.untagged.length, 'Wise payment') + ' to tag', '#money');
   if (n.screenshots) a(plural(n.screenshots, 'payment screenshot') + ' to check', '#speed');
   if (n.toPost) a(plural(n.toPost, 'paid order') + ' to post' + (n.oldestToPostDays ? ' (oldest ' + plural(n.oldestToPostDays, 'day') + ')' : ''), '#speed', n.oldestToPostDays < 3);
   if (n.partOrders) a(plural(n.partOrders, 'part order') + ' waiting for the rest', '#speed');
@@ -595,6 +596,144 @@ function renderExpenses() {
   );
 }
 
+// ---------------------------------------------------------------- money: Wise and wholesale
+
+function productSelect(label, allowNew) {
+  const sel = el('select', { 'aria-label': label },
+    el('option', { value: '' }, 'Pick the product'),
+    state.products.map((p) => el('option', { value: String(p.id) }, p.name + (p.display ? ' · ' + p.display : ''))),
+    allowNew ? el('option', { value: 'new' }, 'New product…') : null);
+  return sel;
+}
+
+function amountText(p) {
+  const main = p.aud_cents != null ? money(p.aud_cents) + (p.aud_estimated ? ' (about)' : '') : (p.amount / 100).toLocaleString('en-AU') + ' ' + p.currency;
+  const other = p.other_currency ? ' · ' + (p.other_amount / 100).toLocaleString('en-AU') + ' ' + p.other_currency
+    : p.currency !== 'AUD' && p.aud_cents != null ? ' · ' + (p.amount / 100).toLocaleString('en-AU') + ' ' + p.currency : '';
+  return main + other;
+}
+
+async function post(path, body, buttons) {
+  (buttons || []).forEach((b) => { b.disabled = true; });
+  try {
+    const r = await api(path, body);
+    toast(r.text);
+    await load();
+  } catch (err) {
+    toast(err.message);
+    (buttons || []).forEach((b) => { b.disabled = false; });
+  }
+}
+
+function wholesaleForm(prefill) {
+  const pre = prefill || {};
+  const customer = el('input', { type: 'text', placeholder: 'Customer', 'aria-label': 'Customer', value: pre.customer || '' });
+  const product = productSelect('Product', true);
+  const newName = el('input', { type: 'text', placeholder: 'New product name', 'aria-label': 'New product name', style: 'display:none' });
+  product.addEventListener('change', () => { newName.style.display = product.value === 'new' ? '' : 'none'; });
+  const qty = el('input', { type: 'text', inputmode: 'numeric', placeholder: 'How many', 'aria-label': 'How many' });
+  const total = el('input', { type: 'text', inputmode: 'decimal', placeholder: 'Total they paid', 'aria-label': 'Total they paid', value: pre.total || '' });
+  const date = el('input', { type: 'date', 'aria-label': 'Date', value: pre.date || state.today });
+  const sent = el('input', { type: 'checkbox', checked: true });
+  const save = el('button', { class: 'primary', type: 'button' }, 'Save sale');
+  save.addEventListener('click', () => post('/dash/api/wholesale', {
+    customer: customer.value, productId: product.value && product.value !== 'new' ? product.value : null,
+    productName: product.value === 'new' ? newName.value : null, quantity: qty.value, total: total.value,
+    date: date.value, sent: sent.checked, paymentId: pre.paymentId || null,
+  }, [save]));
+  return el('div', { class: 'stack', style: 'gap:8px;margin-top:10px' },
+    el('div', { class: 'grid', style: 'grid-template-columns:repeat(2,minmax(0,1fr))' }, customer, date, product, newName, qty, total),
+    el('label', { class: 'check' }, sent, 'Already sent or picked up (no label needed)'),
+    el('div', null, save),
+    el('p', { class: 'hint' }, 'Counts as a sale in your profit, at the product\\u2019s cost. A product you type new is added, never put on sale.'),
+  );
+}
+
+function tagForm(p, tag) {
+  if (tag === 'wholesale') {
+    return wholesaleForm({ customer: p.counterparty || '', total: p.aud_cents != null ? (p.aud_cents / 100).toFixed(2) : '', date: new Date(p.happened_at).toLocaleDateString('en-CA', { timeZone: 'Australia/Melbourne' }), paymentId: p.id });
+  }
+  const note = el('input', { type: 'text', placeholder: tag === 'expense' ? 'What for (optional)' : 'Note (optional)', 'aria-label': 'Note' });
+  const save = el('button', { class: 'primary', type: 'button' }, 'Save');
+  if (tag === 'expense') {
+    save.addEventListener('click', () => post('/dash/api/wise/tag', { id: p.id, tag, note: note.value }, [save]));
+    return el('div', { class: 'edit', style: 'grid-template-columns:minmax(0,1fr) auto' }, note, save);
+  }
+  const product = productSelect('Product', false);
+  const units = el('input', { type: 'text', inputmode: 'numeric', placeholder: tag === 'stock' ? 'Units it paid for' : 'Units it carried', 'aria-label': 'Units' });
+  const setCost = el('input', { type: 'checkbox', checked: true });
+  save.addEventListener('click', () => post('/dash/api/wise/tag', { id: p.id, tag, productId: product.value, units: units.value, setCost: setCost.checked, note: note.value }, [save]));
+  return el('div', { class: 'stack', style: 'gap:8px;margin-top:10px' },
+    el('div', { class: 'grid', style: 'grid-template-columns:repeat(2,minmax(0,1fr))' }, product, units),
+    el('label', { class: 'check' }, setCost, tag === 'stock' ? 'Set the real cost per unit from this payment' : 'Add this freight to its real cost per unit'),
+    el('div', { class: 'row' }, el('div', { class: 'grow' }, note), save),
+    tag === 'freight' ? el('p', { class: 'hint' }, 'Freight with no product? Tag it Expense instead.') : null,
+  );
+}
+
+function paymentCard(p) {
+  const box = el('div', { class: 'card' });
+  const slot = el('div');
+  const open = (tag) => { slot.replaceChildren(tagForm(p, tag)); };
+  const buttons = p.direction === 'out'
+    ? [['Stock', 'stock'], ['Freight', 'freight'], ['Expense', 'expense']]
+    : [['Wholesale sale', 'wholesale']];
+  const ignore = el('button', { type: 'button', onclick: (e) => post('/dash/api/wise/tag', { id: p.id, tag: 'ignore' }, [e.target]) }, 'Not business');
+  box.append(
+    el('div', { class: 'row' },
+      el('span', { class: 'chip ' + (p.direction === 'in' ? 'real' : 'est') }, p.direction === 'in' ? 'Money in' : 'Money out'),
+      el('span', { class: 'name grow' }, p.counterparty || 'Unknown'),
+      el('span', { class: 'num' }, amountText(p))),
+    el('div', { class: 'meta' }, day(p.happened_at) + (p.reference ? ' · ' + p.reference : '') + (p.status ? ' · ' + p.status.replace(/_/g, ' ') : '')),
+    el('div', { class: 'row', style: 'margin-top:8px' }, buttons.map(([label, tag]) => el('button', { type: 'button', onclick: () => open(tag) }, label)), ignore),
+    slot,
+  );
+  return box;
+}
+
+const TAG_NAMES = { stock: 'Stock', freight: 'Freight', expense: 'Expense', wholesale: 'Wholesale sale', ignore: 'Not business' };
+
+function renderMoney() {
+  const m = state.money;
+  const s = m.status;
+  const limit = shown.wise ? m.untagged.length : 6;
+  const lastErr = s.last && s.last.errors && s.last.errors.length ? s.last.errors.join('; ') : null;
+  const syncBtn = el('button', { type: 'button', onclick: (e) => post('/dash/api/wise/sync', {}, [e.target]) }, 'Sync now');
+  return el('section', null,
+    el('h2', { id: 'money' }, 'Money in and out'),
+    el('div', { class: 'stack' },
+      s.connected
+        ? el('div', { class: 'card row' },
+          el('span', { class: 'grow meta' }, 'Wise ' + (s.syncedAt ? 'synced ' + day(s.syncedAt) + ' ' + new Date(s.syncedAt).toLocaleTimeString('en-AU', { timeZone: 'Australia/Melbourne', hour: 'numeric', minute: '2-digit' }) : 'not synced yet') + ' · ' + plural(m.untagged.length, 'payment') + ' to tag' + (lastErr ? ' · ' + lastErr : '')),
+          syncBtn)
+        : el('div', { class: 'card todo' },
+          el('h3', null, 'Connect Wise (2 minutes)'),
+          el('p', { class: 'meta', style: 'margin:0' }, '1. In Wise: Settings, then API tokens, then Add new token. Pick Read only.'),
+          el('p', { class: 'meta', style: 'margin:0' }, '2. In Railway: tcgpackbot, then Variables, then New variable: WISE_API_TOKEN, and paste the token.'),
+          el('p', { class: 'meta', style: 'margin:0' }, '3. The bot pulls your payments every 3 hours. Tag each one here once.')),
+      el('div', { class: 'grid' },
+        tile('Money in', dollars(m.cash.in), 'sales, ' + m.period.toLowerCase()),
+        tile('Money out', dollars(m.cash.out), 'tagged stock, freight, expenses + labels'),
+        tile('Cash left', dollars(m.cash.net), 'in minus out', null, m.cash.net < 0 ? 'neg' : null),
+        tile('Not tagged yet', dollars(m.byTag.untaggedOut), 'paid out of Wise, not tagged'),
+      ),
+      el('p', { class: 'note', style: 'margin:0' }, 'Profit at the top counts what sold, at its cost. Cash counts money when it moves, so stock bought for later shows here first.'),
+      m.untagged.length ? el('div', null,
+        el('h3', null, 'To tag (' + m.untagged.length + ')'),
+        el('div', { class: 'list' }, m.untagged.slice(0, limit).map(paymentCard)),
+        more('wise', m.untagged.length, 6)) : null,
+      el('div', { class: 'card' }, el('h3', null, 'Add a wholesale sale'), wholesaleForm()),
+      m.recent.length ? el('details', { class: 'card' },
+        el('summary', null, 'Recently tagged (' + m.recent.length + ')'),
+        el('div', { class: 'list', style: 'margin-top:10px' }, m.recent.map((p) => el('div', { class: 'row' },
+          el('span', { class: 'grow' }, day(p.happened_at) + ' · ' + (p.counterparty || 'Unknown')),
+          el('span', { class: 'meta' }, TAG_NAMES[p.tag] + (p.product_name ? ': ' + (p.units ? p.units + 'x ' : '') + p.product_name : '')),
+          el('span', { class: 'num' }, amountText(p)),
+          p.order_id ? null : el('button', { class: 'link', type: 'button', onclick: (e) => post('/dash/api/wise/untag', { id: p.id }, [e.target]) }, 'Undo'))))) : null,
+    ),
+  );
+}
+
 function renderCosts() {
   return el('section', null,
     el('h2', { id: 'costs' }, 'Costs and profit'),
@@ -605,7 +744,7 @@ function renderCosts() {
 function render() {
   $('period').value = period;
   $('updated').textContent = 'Updated ' + new Date(stats.generatedAt).toLocaleTimeString('en-AU', { timeZone: 'Australia/Melbourne', hour: 'numeric', minute: '2-digit' });
-  $('app').replaceChildren(renderAlerts(), renderKey(), renderTrend(), renderBuyers(), renderProducts(), renderNights(), renderSpeed(), renderCustomers(), renderServer(), renderCosts());
+  $('app').replaceChildren(renderAlerts(), renderKey(), renderTrend(), renderBuyers(), renderProducts(), renderNights(), renderSpeed(), renderCustomers(), renderServer(), renderMoney(), renderCosts());
 }
 
 $('period').addEventListener('change', (e) => { period = e.target.value; load(); });
@@ -619,7 +758,7 @@ const PERIOD_OPTIONS = [
 
 const JUMPS = [
   ['now', 'Needs you'], ['overview', 'Numbers'], ['trend', 'Trend'], ['buyers', 'Buyers'], ['products', 'Products'],
-  ['nights', 'Sale nights'], ['speed', 'Speed'], ['customers', 'Channels'], ['server', 'Server'], ['costs', 'Costs'],
+  ['nights', 'Sale nights'], ['speed', 'Speed'], ['customers', 'Channels'], ['server', 'Server'], ['money', 'Money'], ['costs', 'Costs'],
 ];
 
 export function renderDashboardPage() {

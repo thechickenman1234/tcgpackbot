@@ -16,6 +16,8 @@ import {
 } from '../services/profitService.js';
 import { ZONE } from '../services/scheduleService.js';
 import { statsFor } from '../services/statsService.js';
+import { addWholesaleSale, moneySummary, tagPayment, untagPayment } from '../services/moneyService.js';
+import { syncWise } from '../services/wiseService.js';
 import { renderDashboardPage, renderMessagePage } from './page.js';
 
 /**
@@ -31,6 +33,8 @@ import { renderDashboardPage, renderMessagePage } from './page.js';
  */
 
 const COOKIE = 'tpb_dash';
+let lastManualSync = 0;
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 const LINK_TTL_MS = 15 * 60000;
 const SESSION_TTL_MS = 30 * 86400000;
 const MAX_BODY_BYTES = 64 * 1024;
@@ -159,6 +163,7 @@ export function dashboardData(period = 'month') {
       uncountedSales: detail.sales - detail.costedSales,
       products: detail.products,
     },
+    money: moneySummary(key),
     todo: {
       noCost: recent.missing.map((m) => ({ id: m.productId, name: m.product, units: m.units })),
       estimated: estimatedCosts().map((p) => {
@@ -270,6 +275,38 @@ const actions = {
     addExpense({ spentOn, amountCents: cents, what });
     audit(client, who, `Expense added: ${money(cents)} for ${what} (${spentOn}).`);
     return { text: 'Added.' };
+  },
+  'POST /dash/api/wise/tag': async (client, who, body) => {
+    const result = tagPayment(String(body.id || ''), {
+      tag: body.tag, productId: body.productId, units: body.units, setCost: body.setCost !== false, note: body.note ? String(body.note).slice(0, 120) : null,
+    });
+    if (result.error) return { status: 400, error: result.error };
+    audit(client, who, `Wise payment tagged as ${body.tag}: ${result.text}`);
+    return { text: result.text };
+  },
+  'POST /dash/api/wise/untag': async (client, who, body) => {
+    const result = untagPayment(String(body.id || ''));
+    if (result.error) return { status: 400, error: result.error };
+    return { text: result.text };
+  },
+  'POST /dash/api/wise/sync': async () => {
+    if (Date.now() - lastManualSync < 60000) return { status: 429, error: 'Synced under a minute ago. Try again shortly.' };
+    lastManualSync = Date.now();
+    const r = await syncWise();
+    if (!r.connected) return { status: 400, error: r.error };
+    const added = r.outNew + r.inNew;
+    return { text: r.ok ? `Synced: ${plural(added, 'new payment')}.${r.errors.length ? ` (${r.errors.join('; ')})` : ''}` : `Wise sync failed: ${r.errors.join('; ')}` };
+  },
+  'POST /dash/api/wholesale': async (client, who, body) => {
+    const totalCents = parseUnitCost(body.total);
+    const result = addWholesaleSale({
+      customer: body.customer, productId: body.productId || null, productName: body.productName || null,
+      quantity: Number(body.quantity), totalCents, date: /^\d{4}-\d{2}-\d{2}$/.test(String(body.date || '')) ? body.date : null,
+      sent: body.sent !== false, paymentId: body.paymentId || null,
+    });
+    if (result.error) return { status: 400, error: result.error };
+    audit(client, who, result.text);
+    return { text: result.text };
   },
   'POST /dash/api/expense/delete': async (client, who, body) => {
     if (!deleteExpense(Number(body.id))) return { status: 404, error: 'Already gone. Reload the page.' };

@@ -20,6 +20,8 @@ import {
 } from '../services/productService.js';
 import { PERIODS, money, profitFor } from '../services/profitService.js';
 import { handleDashboard } from '../dashboard/dashboard.js';
+import { syncWise } from '../services/wiseService.js';
+import { untaggedPayments } from '../services/moneyService.js';
 import {
   addProductToSale,
   cancelScheduledSale,
@@ -425,6 +427,23 @@ const routes = {
     const period = query.get('period') || 'week';
     if (!PERIODS[period]) fail(`period must be one of: ${Object.keys(PERIODS).join(', ')}.`);
     return profitFor(period, { product: query.get('product') || null });
+  },
+
+  /**
+   * Syncs Wise now and says what came back: counts, errors and the five
+   * newest payments still to tag. For checking the read-only token works.
+   */
+  'GET /ops/wise': async () => {
+    const result = await syncWise();
+    const waiting = untaggedPayments(200);
+    return {
+      ...result,
+      untagged: waiting.length,
+      newest: waiting.slice(0, 5).map((p) => ({
+        when: p.happened_at, direction: p.direction, who: p.counterparty, amount: `${(p.amount / 100).toFixed(2)} ${p.currency}`,
+        aud: p.aud_cents == null ? null : (p.aud_cents / 100).toFixed(2), status: p.status,
+      })),
+    };
   },
 
   /** Lifetime sales and the member count, for the website's trust numbers. */
