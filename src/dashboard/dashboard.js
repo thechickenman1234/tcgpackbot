@@ -15,6 +15,7 @@ import {
   summarise,
 } from '../services/profitService.js';
 import { ZONE } from '../services/scheduleService.js';
+import { statsFor } from '../services/statsService.js';
 import { renderDashboardPage, renderMessagePage } from './page.js';
 
 /**
@@ -174,6 +175,58 @@ export function dashboardData(period = 'month') {
   };
 }
 
+// ---------------------------------------------------------------- stats
+
+const DAY_MS = 86400000;
+let memberCache = { at: 0, data: null };
+const userNames = new Map();
+
+/** Who's in the server and when they joined, from Discord, at most every 10 minutes. */
+async function memberSnapshot(client) {
+  if (memberCache.data && Date.now() - memberCache.at < 10 * 60000) return memberCache.data;
+  try {
+    const guild = await client.guilds.fetch(config.guildId);
+    const members = await guild.members.fetch();
+    const humans = members.filter((m) => !m.user.bot);
+    const cutoff = (d) => Date.now() - d * DAY_MS;
+    memberCache = {
+      at: Date.now(),
+      data: {
+        total: guild.memberCount,
+        ids: new Set(humans.map((m) => m.id)),
+        joined30: humans.filter((m) => m.joinedTimestamp >= cutoff(30)).size,
+        joined60: humans.filter((m) => m.joinedTimestamp >= cutoff(60)).map((m) => m.id),
+      },
+    };
+  } catch (err) {
+    console.error('Dashboard: could not read members:', err.message);
+  }
+  return memberCache.data;
+}
+
+async function nameOf(client, id) {
+  if (!id) return null;
+  if (!userNames.has(id)) {
+    const user = await client.users.fetch(id).catch(() => null);
+    userNames.set(id, user ? user.globalName || user.username : null);
+  }
+  return userNames.get(id);
+}
+
+const statsCache = new Map();
+
+/** The stats for one period, worked out at most once a minute. */
+export async function dashboardStats(client, period = 'month') {
+  const key = PERIODS[period] ? period : 'month';
+  const cached = statsCache.get(key);
+  if (cached && Date.now() - cached.at < 60000) return cached.data;
+  const members = client ? await memberSnapshot(client) : null;
+  const data = statsFor(key, { members });
+  for (const link of data.community.invites.links.slice(0, 15)) link.inviter = await nameOf(client, link.inviterId);
+  statsCache.set(key, { at: Date.now(), data });
+  return data;
+}
+
 function sendJson(res, status, payload) {
   res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
   res.end(JSON.stringify(payload));
@@ -254,6 +307,9 @@ export async function handleDashboard(client, req, res, url) {
     }
 
     if (req.method === 'GET' && path === '/dash') return sendHtml(res, 200, renderDashboardPage());
+    if (req.method === 'GET' && path === '/dash/api/stats') {
+      return sendJson(res, 200, { ok: true, ...(await dashboardStats(client, url.searchParams.get('period') || 'month')) });
+    }
     if (req.method === 'GET' && path === '/dash/api/data') {
       return sendJson(res, 200, { ok: true, ...dashboardData(url.searchParams.get('period') || 'month') });
     }
@@ -264,6 +320,7 @@ export async function handleDashboard(client, req, res, url) {
     if (req.headers['x-dash'] !== '1') return sendJson(res, 403, { ok: false, error: 'Refused.' });
     const result = await action(client, who.u, await readJson(req));
     if (result.error) return sendJson(res, result.status || 400, { ok: false, error: result.error });
+    statsCache.clear();
     return sendJson(res, 200, { ok: true, ...result });
   } catch (err) {
     console.error(`Dashboard ${req.method} ${path} failed:`, err);

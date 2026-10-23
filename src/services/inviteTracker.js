@@ -1,4 +1,5 @@
 import { getRunningGiveaway, markInviteeLeft, recordInvite } from './giveawayService.js';
+import { recordJoin, recordLeave } from './activityService.js';
 
 /**
  * Works out who invited whom.
@@ -98,6 +99,11 @@ export async function handleGuildMemberAdd(member) {
 
     if (member.user.bot) return;
 
+    // Every join is kept for the dashboard, with the link it came through
+    // when that can be told, giveaway or not.
+    const usedCode = findUsedCode(before, after);
+    recordJoin(member, usedCode, usedCode ? guild.invites.cache.get(usedCode)?.inviter?.id ?? null : null);
+
     const giveaway = getRunningGiveaway();
     if (!giveaway) return;
 
@@ -113,7 +119,7 @@ export async function handleGuildMemberAdd(member) {
       return;
     }
 
-    const code = findUsedCode(before, after);
+    const code = usedCode;
     if (!code) {
       console.log(`Giveaway: could not tell which invite ${member.user.tag} used — nobody credited.`);
       return;
@@ -153,6 +159,7 @@ export async function handleGuildMemberAdd(member) {
 }
 
 export async function handleGuildMemberRemove(member) {
+  recordLeave(member);
   try {
     const giveaway = getRunningGiveaway();
     if (!giveaway) return;

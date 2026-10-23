@@ -24,6 +24,7 @@ import { startGiveawayBoardJob } from './services/giveawayBoard.js';
 import { startScheduledMessagesJob } from './jobs/scheduledMessages.js';
 import { startScheduledSalesJob } from './jobs/scheduledSales.js';
 import { startProfitReportJob } from './jobs/profitReport.js';
+import { recordChatMessage, startMemberSnapshotJob } from './services/activityService.js';
 import { startReelReminderJob } from './handlers/reelLoop.js';
 import { reportBuyerRoleStatus } from './services/buyerRoleService.js';
 import { startOpsServer } from './ops/opsServer.js';
@@ -65,6 +66,7 @@ client.once('ready', async () => {
   startScheduledSalesJob(client);
   startReelReminderJob(client);
   startProfitReportJob(client);
+  startMemberSnapshotJob(client);
   startOpsServer(client);
   await reportBuyerRoleStatus(client);
 });
@@ -80,6 +82,7 @@ client.on('messageCreate', async (message) => {
     await handleAppealsChannelMessage(message);
     await handlePaymentProofMessage(message);
     await handleLabelDropMessage(message);
+    recordChatMessage(message);
   } catch (err) {
     console.error('messageCreate error:', err);
   }

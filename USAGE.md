@@ -193,6 +193,23 @@ A new **estimate** on a product that already has a cost is treated as a new wave
 
 ---
 
+## Dashboard
+
+`/dashboard` opens it. One period picker at the top (today, this or last week, this or last month, 30 or 90 days, all time) drives every section; the arrows on the key numbers compare with the same stretch one period earlier. Your own test orders are left out everywhere.
+
+- **Needs you now:** products sold with no cost, payment screenshots to check, paid orders not posted (and the oldest), part orders waiting for the rest, unpaid claims, products still on estimated costs.
+- **Key numbers:** sales, profit after expenses, average and middle order, buyers and new buyers, units, returning buyers, spend per buyer.
+- **Trend:** sales and profit for each of the last 12 weeks (tap a bar), and month by month.
+- **Biggest buyers** for the period or all time: what they buy, when they last bought, active or gone quiet. Plus how much your top 10 and 20 make up, the big buyers who've gone quiet (worth a message), who joins the most sale nights, and what people spend in total.
+- **What sells:** each product's sales, units, buyers, price each and profit, and the Japanese, Chinese and English split.
+- **Sale nights:** each night's sales, units sold of units claimed, no-shows, new buyers and late claims, best night starred, and which nights or channels new buyers came from.
+- **Speed and bottlenecks:** time from claim to paid, paid on time, no-shows and what they cost, claimed vs paid, time from paid to posted, posted with tracking, late-claim and express share.
+- **Where sales come from:** channel (claims, late, wholesale, Facebook, DM...), state and shipping.
+- **The server:** members, how many have bought, how many new members bought, who's chatting, chat by hour, members over time and which invite links bring people who buy. The bot only started counting members each day, chat (how many and when, never what's said, tickets left out) and the invite link each new member used when this was deployed, so those fill in from then.
+- **Costs and profit:** the costs to put in, the profit breakdown, every product's cost, and other expenses.
+
+---
+
 ## Sale lifecycle messages
 
 ### Sold out

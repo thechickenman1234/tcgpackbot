@@ -28,6 +28,7 @@ export const PERIODS = {
   month: 'This month',
   last_month: 'Last month',
   '30d': 'Last 30 days',
+  '90d': 'Last 90 days',
   all: 'All time',
 };
 
@@ -77,6 +78,8 @@ export function periodRange(key, now = new Date()) {
       return { label, sinceIso: midnight(ymd(y, m - 1, 1)), untilIso: midnight(ymd(y, m, 1)) };
     case '30d':
       return { label, sinceIso: new Date(now.getTime() - 30 * DAY).toISOString(), untilIso: null };
+    case '90d':
+      return { label, sinceIso: new Date(now.getTime() - 90 * DAY).toISOString(), untilIso: null };
     case 'all':
       return { label, sinceIso: null, untilIso: null };
     default:

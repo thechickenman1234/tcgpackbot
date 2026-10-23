@@ -300,6 +300,38 @@ export function initDatabase() {
     )
   `);
   db.exec('CREATE INDEX IF NOT EXISTS idx_parcels_order ON order_parcels(order_id)');
+  // What the dashboard tracks about the server from now on (activityService):
+  // members each day, chat per Melbourne hour, who chats, and which invite
+  // link each new member came through.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS member_daily (
+      date TEXT PRIMARY KEY,
+      members INTEGER,
+      joins INTEGER NOT NULL DEFAULT 0,
+      leaves INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS chat_hourly (
+      date TEXT NOT NULL,
+      hour INTEGER NOT NULL,
+      messages INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (date, hour)
+    );
+    CREATE TABLE IF NOT EXISTS chat_authors (
+      author_id TEXT PRIMARY KEY,
+      first_at TEXT NOT NULL,
+      last_at TEXT NOT NULL,
+      messages INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS member_joins (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      member_id TEXT NOT NULL,
+      joined_at TEXT NOT NULL,
+      invite_code TEXT,
+      inviter_id TEXT,
+      left_at TEXT
+    );
+  `);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_member_joins_member ON member_joins(member_id)');
   // Money out that isn't stock or labels (packaging, fees, tools), so the
   // dashboard's profit can be after everything.
   db.exec(`

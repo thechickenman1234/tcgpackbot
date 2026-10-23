@@ -1,42 +1,67 @@
 /**
  * The dashboard's HTML: one self-contained page (styles and script inline,
- * nothing loaded from elsewhere) that reads /dash/api/data and posts changes
- * back. Built for a phone first. Every name from the database goes in with
- * textContent, never as HTML.
+ * nothing loaded from elsewhere) that reads /dash/api/data (costs, profit,
+ * expenses) and /dash/api/stats (everything else) and posts changes back.
+ * Built for a phone first: the alerts, key numbers and trend come first so
+ * one look says how things are going, and the detail sits below. Every name
+ * from the database goes in with textContent, never as HTML.
+ *
+ * STYLE and SCRIPT are plain strings inside template literals, so neither
+ * may contain a backtick or a dollar-brace.
  */
 
 const STYLE = `
 :root {
   --bg: #f6f5f1; --card: #ffffff; --ink: #1d1d1b; --soft: #6b6a64; --line: #e4e1d8;
-  --accent: #2f6f4f; --accent-ink: #ffffff; --warn: #a15c00; --warn-bg: #fff3df; --bad: #b3261e;
-  --good-bg: #e6f2ea; --chip: #efede6;
+  --accent: #2f6f4f; --accent-soft: #b9d8c6; --accent-ink: #ffffff; --warn: #a15c00; --warn-bg: #fff3df;
+  --bad: #b3261e; --good: #2f6f4f; --good-bg: #e6f2ea; --chip: #efede6;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #151514; --card: #1f1f1d; --ink: #f1efe8; --soft: #a3a198; --line: #34332f;
-    --accent: #6cc495; --accent-ink: #0e1a13; --warn: #f0b45c; --warn-bg: #3a2c14; --bad: #ff8a80;
-    --good-bg: #1d3326; --chip: #2a2a27;
+    --accent: #6cc495; --accent-soft: #2e5a42; --accent-ink: #0e1a13; --warn: #f0b45c; --warn-bg: #3a2c14;
+    --bad: #ff8a80; --good: #6cc495; --good-bg: #1d3326; --chip: #2a2a27;
   }
 }
 * { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-main { max-width: 760px; margin: 0 auto; padding: 18px 16px 80px; display: grid; gap: 22px; }
-h1 { font-size: 22px; margin: 4px 0 0; }
-h2 { font-size: 17px; margin: 0 0 10px; }
+main { max-width: 820px; margin: 0 auto; padding: 0 16px 80px; display: grid; gap: 26px; }
+header.top { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 10px 0 8px; border-bottom: 1px solid var(--line); display: grid; gap: 8px; }
+.toprow { display: flex; align-items: center; gap: 12px; }
+.toprow .titles { flex: 1 1 auto; min-width: 0; }
+h1 { font-size: 19px; margin: 0; line-height: 1.2; }
+#updated { margin: 0; font-size: 12px; }
+h2 { font-size: 17px; margin: 0 0 10px; scroll-margin-top: 100px; }
+h3 { font-size: 15px; margin: 0 0 8px; }
+.toprow select { width: auto; max-width: 52%; padding: 7px 10px; }
+.head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: baseline; }
+nav.jump { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+nav.jump a { flex: 0 0 auto; font-size: 13px; padding: 5px 10px; border-radius: 99px; background: var(--chip); color: var(--ink); text-decoration: none; }
 .sub { color: var(--soft); font-size: 14px; margin: 2px 0 0; }
-.tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-@media (max-width: 520px) { .tiles { grid-template-columns: 1fr; } }
+.grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 640px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .tile, .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; min-width: 0; }
 .tile .k { font-size: 13px; color: var(--soft); }
-.tile .v { font-size: 26px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.tile .v { font-size: 24px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .tile .s { font-size: 13px; color: var(--soft); margin-top: 2px; }
-.neg { color: var(--bad); }
-.list { display: grid; gap: 10px; }
+.delta { font-size: 12px; font-weight: 650; margin-left: 4px; white-space: nowrap; }
+.up { color: var(--good); } .down, .neg { color: var(--bad); }
+.list { display: grid; gap: 8px; }
+.stack { display: grid; gap: 12px; }
+.alerts { display: flex; flex-wrap: wrap; gap: 8px; }
+.alert { font-size: 14px; padding: 8px 12px; border-radius: 12px; background: var(--warn-bg); color: var(--ink); border: 1px solid var(--warn); text-decoration: none; }
+.alert.soft { background: var(--chip); border-color: var(--line); }
+.alert.ok { background: var(--good-bg); border-color: var(--accent-soft); }
 .todo { border-color: var(--warn); background: var(--warn-bg); }
 .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .grow { flex: 1 1 auto; min-width: 0; }
 .name { font-weight: 650; overflow-wrap: anywhere; }
+.rank { color: var(--soft); font-variant-numeric: tabular-nums; min-width: 1.6em; }
+.num { font-variant-numeric: tabular-nums; font-weight: 650; }
 .meta { color: var(--soft); font-size: 14px; }
+.insight { font-size: 14px; margin: 10px 0 0; }
+.insight b { font-variant-numeric: tabular-nums; }
 input, select, button { font: inherit; }
 input[type=text], input[type=date], select {
   width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line);
@@ -48,18 +73,35 @@ button { padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line);
 button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 650; }
 button.link { background: none; border: none; padding: 4px 6px; color: var(--accent); }
 button:disabled { opacity: .5; }
-.chip { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 99px; background: var(--chip); color: var(--soft); }
-.chip.real { background: var(--good-bg); color: var(--accent); }
-.chip.est { background: var(--warn-bg); color: var(--warn); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; padding: 6px 12px; font-size: 14px; background: var(--card); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.chip { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 99px; background: var(--chip); color: var(--soft); white-space: nowrap; }
+.chip.real, .chip.active { background: var(--good-bg); color: var(--good); }
+.chip.est, .chip.quiet { background: var(--warn-bg); color: var(--warn); }
 .lines { display: grid; gap: 6px; }
 .lines div { display: flex; justify-content: space-between; gap: 12px; font-variant-numeric: tabular-nums; }
 .lines .total { font-weight: 700; border-top: 1px solid var(--line); padding-top: 6px; }
 .note { font-size: 13px; color: var(--soft); margin: 8px 0 0; }
 .hint { font-size: 13px; color: var(--soft); margin: 6px 0 0; }
 label.check { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--soft); grid-column: 1 / -1; }
+.bars { display: grid; gap: 7px; }
+.bar { display: grid; grid-template-columns: minmax(0, 40%) minmax(0, 1fr) auto; gap: 10px; align-items: center; font-size: 14px; }
+.bar .lbl { overflow-wrap: anywhere; }
+.bar .track { height: 10px; border-radius: 5px; background: var(--chip); overflow: hidden; }
+.bar .fill { height: 100%; background: var(--accent); border-radius: 5px; }
+.bar .val { font-variant-numeric: tabular-nums; color: var(--soft); min-width: 3.5em; text-align: right; }
+.split { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--chip); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--soft); margin-top: 8px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+svg.chart { width: 100%; height: auto; display: block; }
+.axis { display: flex; justify-content: space-between; font-size: 12px; color: var(--soft); margin-top: 4px; }
+.hours { display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); gap: 2px; align-items: end; height: 70px; }
+.hours div { background: var(--accent); border-radius: 2px 2px 0 0; min-height: 2px; }
+.hourlbl { display: grid; grid-template-columns: repeat(4, 1fr); font-size: 11px; color: var(--soft); margin-top: 4px; }
 .expense-form { display: grid; grid-template-columns: 150px minmax(0, 1fr) 120px auto; gap: 8px; }
 @media (max-width: 600px) { .expense-form { grid-template-columns: 1fr 1fr; } .expense-form .what { grid-column: 1 / -1; order: -1; } }
-#toast { position: fixed; left: 16px; right: 16px; bottom: 16px; max-width: 520px; margin: 0 auto; padding: 12px 14px; border-radius: 12px; background: var(--ink); color: var(--bg); font-size: 15px; opacity: 0; transform: translateY(10px); transition: .2s; pointer-events: none; }
+#toast { position: fixed; left: 16px; right: 16px; bottom: 16px; max-width: 520px; margin: 0 auto; padding: 12px 14px; border-radius: 12px; background: var(--ink); color: var(--bg); font-size: 15px; opacity: 0; transform: translateY(10px); transition: .2s; pointer-events: none; z-index: 10; }
 #toast.show { opacity: 1; transform: none; }
 .empty { color: var(--soft); font-size: 14px; }
 `;
@@ -67,7 +109,10 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 13px; col
 const SCRIPT = `
 const $ = (id) => document.getElementById(id);
 let state = null;
+let stats = null;
 let period = 'month';
+let buyerView = 'period';
+const shown = {};
 
 function el(tag, props, ...kids) {
   const e = document.createElement(tag);
@@ -76,11 +121,26 @@ function el(tag, props, ...kids) {
     else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
     else if (v !== null && v !== undefined && v !== false) e.setAttribute(k, v === true ? '' : v);
   }
-  for (const kid of kids.flat()) if (kid !== null && kid !== undefined && kid !== false) e.append(kid.nodeType ? kid : String(kid));
+  for (const kid of kids.flat(Infinity)) if (kid !== null && kid !== undefined && kid !== false) e.append(kid.nodeType ? kid : String(kid));
   return e;
 }
+function svgEl(tag, attrs, ...kids) {
+  const e = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v);
+  for (const kid of kids) e.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
+  return e;
+}
+
 const money = (c) => (c < 0 ? '-' : '') + '$' + (Math.abs(c) / 100).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const dollars = (c) => c == null ? '-' : (c < 0 ? '-' : '') + '$' + Math.round(Math.abs(c) / 100).toLocaleString('en-AU');
+const pct = (r, dp) => r == null ? '-' : (r * 100).toFixed(dp == null ? 0 : dp) + '%';
 const plural = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
+const day = (iso) => iso ? new Date(iso).toLocaleDateString('en-AU', { timeZone: 'Australia/Melbourne', day: 'numeric', month: 'short' }) : '-';
+const weekday = (iso) => iso ? new Date(iso).toLocaleDateString('en-AU', { timeZone: 'Australia/Melbourne', weekday: 'short', day: 'numeric', month: 'short' }) : '-';
+const month = (iso) => new Date(iso).toLocaleDateString('en-AU', { timeZone: 'Australia/Melbourne', month: 'long', year: 'numeric' });
+const hours = (h) => h == null ? '-' : h < 1 ? Math.round(h * 60) + ' min' : h < 48 ? h.toFixed(1) + ' h' : (h / 24).toFixed(1) + ' days';
+const days = (d) => d == null ? '-' : d < 1 ? Math.round(d * 24) + ' h' : d.toFixed(1) + ' days';
+const nightDate = (d) => weekday(d + 'T09:00:00Z');
 
 function toast(text) {
   const t = $('toast');
@@ -102,12 +162,312 @@ async function api(path, body) {
 
 async function load() {
   try {
-    state = await api('/dash/api/data?period=' + encodeURIComponent(period));
+    const q = '?period=' + encodeURIComponent(period);
+    const [d, s] = await Promise.all([api('/dash/api/data' + q), api('/dash/api/stats' + q)]);
+    state = d;
+    stats = s;
     render();
   } catch (err) {
     $('app').replaceChildren(el('p', { class: 'empty' }, err.message));
   }
 }
+
+function delta(now, before, { invert } = {}) {
+  if (before == null || now == null || !stats.previous) return null;
+  if (before === 0) return now === 0 ? null : el('span', { class: 'delta up' }, 'new');
+  const r = (now - before) / Math.abs(before);
+  if (Math.abs(r) < 0.005) return el('span', { class: 'delta' }, '0%');
+  const good = invert ? r < 0 : r > 0;
+  return el('span', { class: 'delta ' + (good ? 'up' : 'down') }, (r > 0 ? '▲ ' : '▼ ') + Math.abs(Math.round(r * 100)) + '%');
+}
+
+function tile(k, v, s, d, cls) {
+  return el('div', { class: 'tile' }, el('div', { class: 'k' }, k), el('div', { class: 'v' + (cls ? ' ' + cls : '') }, v, d), s ? el('div', { class: 's' }, s) : null);
+}
+
+function bars(rows, { label, value, fmt, max }) {
+  const top = max || Math.max(1, ...rows.map(value));
+  return el('div', { class: 'bars' }, rows.map((r) => el('div', { class: 'bar' },
+    el('span', { class: 'lbl' }, label(r)),
+    el('div', { class: 'track' }, el('div', { class: 'fill', style: 'width:' + Math.max(2, (value(r) / top) * 100) + '%' })),
+    el('span', { class: 'val' }, fmt(r)),
+  )));
+}
+
+function more(key, total, limit) {
+  if (total <= limit) return null;
+  return el('button', { type: 'button', class: 'link', onclick: () => { shown[key] = !shown[key]; render(); } }, shown[key] ? 'Show fewer' : 'Show all ' + total);
+}
+
+// ---------------------------------------------------------------- top
+
+function renderAlerts() {
+  const n = stats.now;
+  const items = [];
+  const a = (text, href, soft) => items.push(el('a', { class: 'alert' + (soft ? ' soft' : ''), href }, text));
+  if (n.costsMissing) a(plural(n.costsMissing, 'product') + ' sold with no cost', '#costs');
+  if (n.screenshots) a(plural(n.screenshots, 'payment screenshot') + ' to check', '#speed');
+  if (n.toPost) a(plural(n.toPost, 'paid order') + ' to post' + (n.oldestToPostDays ? ' (oldest ' + plural(n.oldestToPostDays, 'day') + ')' : ''), '#speed', n.oldestToPostDays < 3);
+  if (n.partOrders) a(plural(n.partOrders, 'part order') + ' waiting for the rest', '#speed');
+  if (n.unpaid) a(plural(n.unpaid, 'unpaid claim') + ' (' + dollars(n.unpaidValue) + ')', '#speed', true);
+  if (n.estimates) a(plural(n.estimates, 'product') + ' on estimated costs', '#costs', true);
+  return el('section', null,
+    el('h2', { id: 'now' }, 'Needs you now'),
+    items.length ? el('div', { class: 'alerts' }, items) : el('div', { class: 'alerts' }, el('span', { class: 'alert ok' }, 'All clear. Nothing waiting on you.')),
+  );
+}
+
+function renderKey() {
+  const t = stats.totals;
+  const p = stats.previous || {};
+  const vs = stats.previous ? 'vs the same time before' : null;
+  const profitNote = t.uncountedSales ? dollars(t.uncountedSales) + ' of sales has no cost yet' : t.estimatedSales ? 'partly on estimated costs' : (t.margin != null ? pct(t.margin, 1) + ' margin' : null);
+  return el('section', null,
+    el('h2', { id: 'overview' }, stats.period.label),
+    el('div', { class: 'grid' },
+      tile('Sales', dollars(t.sales), plural(t.orders, 'order'), delta(t.sales, p.sales)),
+      tile('Profit', dollars(t.net), profitNote, delta(t.net, p.net), t.net < 0 ? 'neg' : null),
+      tile('Average order', dollars(t.avgOrder), 'middle order ' + dollars(t.medianOrder), delta(t.avgOrder, p.avgOrder)),
+      tile('Buyers', String(t.buyers), plural(t.newBuyers, 'new buyer'), delta(t.buyers, p.buyers)),
+      tile('Units sold', String(t.units), t.over1k ? plural(t.over1k, 'order') + ' over $1k' : 'no orders over $1k', delta(t.units, p.units)),
+      tile('Returning buyers', pct(t.buyers ? t.returningBuyers / t.buyers : null), t.returningBuyers + ' had bought before', null),
+      tile('Spent per buyer', dollars(t.avgPerBuyer), 'middle buyer ' + dollars(t.medianPerBuyer), delta(t.avgPerBuyer, p.avgPerBuyer)),
+      tile('New buyers', String(t.newBuyers), 'first ever order', delta(t.newBuyers, p.newBuyers)),
+    ),
+    vs ? el('p', { class: 'note' }, 'Arrows compare with the same stretch one period earlier.') : null,
+  );
+}
+
+function weeklyChart(weeks) {
+  const W = 600, H = 190, pad = 4, gap = 8;
+  const max = Math.max(1, ...weeks.map((w) => w.sales));
+  const bw = (W - pad * 2) / weeks.length - gap;
+  const svg = svgEl('svg', { class: 'chart', viewBox: '0 0 ' + W + ' ' + H, role: 'img', 'aria-label': 'Sales and profit by week, last 12 weeks' });
+  const describe = (w) => 'Week of ' + day(w.start) + ': ' + dollars(w.sales) + ' sales, ' + dollars(w.profit) + ' profit, '
+    + plural(w.orders, 'order') + ', ' + plural(w.buyers, 'buyer') + '.';
+  const info = el('p', { class: 'meta', style: 'margin:8px 0 0', 'aria-live': 'polite' }, describe(weeks[weeks.length - 1]));
+  weeks.forEach((w, i) => {
+    const x = pad + i * (bw + gap);
+    const h = (w.sales / max) * (H - 20);
+    const ph = Math.max(0, (w.profit / max) * (H - 20));
+    const g = svgEl('g', { style: 'cursor:pointer' }, svgEl('title', null, describe(w)));
+    // A clear full-height strip, so a week with no sales can still be tapped.
+    g.append(svgEl('rect', { x: x - gap / 2, y: 0, width: bw + gap, height: H, fill: 'transparent' }));
+    g.append(svgEl('rect', { x, y: H - h, width: bw, height: Math.max(1, h), rx: 3, fill: 'var(--accent-soft)' }));
+    if (ph) g.append(svgEl('rect', { x: x + bw * 0.22, y: H - ph, width: bw * 0.56, height: ph, rx: 2, fill: 'var(--accent)' }));
+    g.addEventListener('click', () => { info.textContent = describe(w); });
+    svg.append(g);
+  });
+  const mid = weeks[Math.floor(weeks.length / 2)];
+  return el('div', null,
+    el('p', { class: 'meta', style: 'margin:0 0 6px' }, 'Best week ' + dollars(max) + '. Tap a bar to see that week.'),
+    svg,
+    el('div', { class: 'axis' }, el('span', null, day(weeks[0].start)), el('span', null, day(mid.start)), el('span', null, 'this week')),
+    info);
+}
+
+function renderTrend() {
+  const firstSale = stats.monthly.findIndex((m) => m.sales > 0);
+  const months = firstSale === -1 ? stats.monthly.slice(-1) : stats.monthly.slice(firstSale);
+  return el('section', null,
+    el('h2', { id: 'trend' }, 'Trend'),
+    el('div', { class: 'card' },
+      el('h3', null, 'Sales by week, last 12 weeks'),
+      weeklyChart(stats.weekly),
+      el('div', { class: 'legend' }, el('span', null, el('i', { style: 'background:var(--accent-soft)' }), 'Sales'), el('span', null, el('i', { style: 'background:var(--accent)' }), 'Profit (where costs are in)')),
+    ),
+    el('div', { class: 'card', style: 'margin-top:10px' },
+      el('h3', null, 'Month by month'),
+      el('div', { class: 'list' }, months.slice().reverse().map((m) => el('div', null,
+        el('div', { class: 'head' }, el('span', { class: 'name' }, month(m.start)), el('span', { class: 'num' }, dollars(m.sales))),
+        el('div', { class: 'meta' }, plural(m.orders, 'order') + ' · ' + plural(m.buyers, 'buyer') + ' (' + m.newBuyers + ' new) · average ' + dollars(m.avgOrder)
+          + (m.profit ? ' · profit ' + dollars(m.profit) : '')),
+      ))),
+    ),
+  );
+}
+
+// ---------------------------------------------------------------- buyers
+
+function renderBuyers() {
+  const b = stats.buyers;
+  const list = buyerView === 'period' ? b.top : b.topAllTime;
+  const limit = shown.buyers ? 25 : 10;
+  const seg = el('div', { class: 'seg' },
+    el('button', { type: 'button', 'aria-pressed': String(buyerView === 'period'), onclick: () => { buyerView = 'period'; render(); } }, stats.period.label),
+    el('button', { type: 'button', 'aria-pressed': String(buyerView === 'all'), onclick: () => { buyerView = 'all'; render(); } }, 'All time'));
+  const rows = list.slice(0, limit).map((x, i) => el('div', { class: 'card' },
+    el('div', { class: 'head' },
+      el('span', { class: 'name' }, el('span', { class: 'rank' }, '#' + (i + 1) + ' '), x.name),
+      el('span', { class: 'num' }, dollars(x.spent))),
+    el('div', { class: 'meta' }, plural(x.orders, 'order') + ' · ' + x.mostly + (x.via ? ' · ' + x.via : '')),
+    el('div', { class: 'row', style: 'margin-top:4px' },
+      el('span', { class: 'meta grow' }, 'Last bought ' + day(x.lastAt) + ' · first ' + day(x.firstAt)),
+      el('span', { class: 'chip ' + (x.active ? 'active' : 'quiet') }, x.active ? 'active' : 'gone quiet')),
+  ));
+  return el('section', null,
+    el('div', { class: 'row' }, el('h2', { id: 'buyers', class: 'grow' }, 'Biggest buyers'), seg),
+    list.length ? el('div', { class: 'list' }, rows) : el('p', { class: 'empty' }, 'No buyers in this period.'),
+    more('buyers', Math.min(list.length, 25), 10),
+    buyerView === 'period' && stats.totals.buyers > 10 ? el('p', { class: 'insight' },
+      'Your top 10 buyers made ', el('b', null, pct(b.top10Share)), ' of sales',
+      stats.totals.buyers > 20 ? [' and your top 20 made ', el('b', null, pct(b.top20Share))] : null,
+      b.bigOrdersShare ? ['. Orders over $1k were ', el('b', null, pct(b.bigOrdersShare)), '.'] : '.') : null,
+    buyerView === 'period' && stats.totals.buyers > 1 && stats.totals.buyers <= 10 && b.bigOrdersShare ? el('p', { class: 'insight' },
+      'Orders over $1k were ', el('b', null, pct(b.bigOrdersShare)), ' of sales.') : null,
+    b.quiet.length ? el('div', { class: 'card todo', style: 'margin-top:12px' },
+      el('h3', null, 'Gone quiet: ' + plural(b.quiet.length, 'big buyer') + ', ' + dollars(b.quietSpent) + ' between them'),
+      el('p', { class: 'meta', style: 'margin:0 0 8px' }, "From your top 30, no order in 30+ days. Worth a message when something they like comes in."),
+      el('div', { class: 'list' }, b.quiet.map((q) => el('div', null,
+        el('div', { class: 'head' }, el('span', { class: 'name' }, q.name), el('span', { class: 'num' }, dollars(q.spent))),
+        el('div', { class: 'meta' }, 'Last bought ' + day(q.lastAt) + ' · ' + q.mostly)))),
+    ) : null,
+    b.loyal.length ? el('p', { class: 'insight' }, 'Most sale nights joined: ', b.loyal.map((l, i) => [i ? ' · ' : '', el('b', null, l.name), ' ' + l.nights])) : null,
+    el('div', { class: 'card', style: 'margin-top:12px' },
+      el('h3', null, 'What people spend in total (all time)'),
+      bars(b.spendGroups, { label: (r) => r.label, value: (r) => r.buyers, fmt: (r) => plural(r.buyers, 'buyer') })),
+  );
+}
+
+// ---------------------------------------------------------------- products, nights
+
+const LANG_COLOURS = { Japanese: 'var(--accent)', Chinese: 'var(--warn)', English: '#5b7bd5', Other: 'var(--soft)' };
+
+function renderProducts() {
+  const ps = stats.products;
+  const limit = shown.products ? ps.length : 8;
+  const total = stats.languages.reduce((t, l) => t + l.sales, 0) || 1;
+  return el('section', null,
+    el('h2', { id: 'products' }, 'What sells'),
+    ps.length ? el('div', { class: 'list' }, ps.slice(0, limit).map((p) => el('div', { class: 'card' },
+      el('div', { class: 'head' }, el('span', { class: 'name' }, p.name), el('span', { class: 'num' }, dollars(p.sales))),
+      el('div', { class: 'meta' }, plural(p.units, 'unit') + ' · ' + plural(p.buyers, 'buyer') + ' · ' + dollars(p.perUnit) + ' each · ',
+        p.missing && !p.costedSales ? el('span', { class: 'chip est' }, 'no cost') : el('span', { class: p.profit < 0 ? 'neg' : '' }, 'profit ' + dollars(p.profit) + (p.margin != null ? ' (' + pct(p.margin, 1) + ')' : '') + (p.estimated ? ' est.' : ''))),
+    ))) : el('p', { class: 'empty' }, 'Nothing sold in this period.'),
+    more('products', ps.length, 8),
+    stats.languages.length ? el('div', { class: 'card', style: 'margin-top:12px' },
+      el('h3', null, 'Japanese, Chinese or English'),
+      el('div', { class: 'split' }, stats.languages.map((l) => el('div', { style: 'width:' + (l.sales / total) * 100 + '%;background:' + (LANG_COLOURS[l.key] || 'var(--soft)'), title: l.key }))),
+      el('div', { class: 'legend' }, stats.languages.map((l) => el('span', null, el('i', { style: 'background:' + (LANG_COLOURS[l.key] || 'var(--soft)') }), l.key + ' ' + pct(l.sales / total) + ' (' + dollars(l.sales) + ')')))) : null,
+  );
+}
+
+function renderNights() {
+  const ns = stats.nights;
+  const best = ns.slice().sort((a, b) => b.sales - a.sales)[0];
+  const limit = shown.nights ? ns.length : 8;
+  return el('section', null,
+    el('h2', { id: 'nights' }, 'Sale nights'),
+    ns.length ? el('div', { class: 'list' }, ns.slice(0, limit).map((n) => el('div', { class: 'card' },
+      el('div', { class: 'head' },
+        el('span', { class: 'name' }, (n === best ? '★ ' : '') + n.name),
+        el('span', { class: 'num' }, dollars(n.sales))),
+      el('div', { class: 'meta' }, nightDate(n.date) + ' · ' + n.units + ' sold of ' + n.claimedUnits + ' claimed'
+        + (n.noShowUnits ? ' (' + n.noShowUnits + ' never paid)' : '') + ' · ' + plural(n.buyers, 'buyer') + (n.newBuyers ? ', ' + n.newBuyers + ' new' : '')
+        + (n.lateUnits ? ' · ' + n.lateUnits + ' late' : '')),
+    ))) : el('p', { class: 'empty' }, 'No sale nights in this period.'),
+    more('nights', ns.length, 8),
+    stats.newBuyersFrom.length ? el('p', { class: 'insight' }, 'New buyers came from: ',
+      stats.newBuyersFrom.map((s, i) => [i ? ' · ' : '', el('b', null, s.key), ' ' + s.buyers])) : null,
+  );
+}
+
+// ---------------------------------------------------------------- speed, customers, server
+
+function renderSpeed() {
+  const s = stats.speed;
+  const n = stats.now;
+  return el('section', null,
+    el('h2', { id: 'speed' }, 'Speed and bottlenecks'),
+    el('div', { class: 'grid' },
+      tile('Time to pay', hours(s.payHoursMedian), 'middle claim, claim to paid'),
+      tile('Paid on time', pct(s.paidOnTime), 'before the deadline'),
+      tile('Never paid', String(s.noShows), s.noShows ? pct(s.noShowRate) + ' of claims · ' + dollars(s.noShowValue) + ' lost' : 'no no-shows', null, s.noShows ? 'neg' : null),
+      tile('Claimed vs paid', s.paidUnits + ' / ' + s.claimedUnits, 'units paid of units claimed'),
+      tile('Time to post', days(s.postDaysMedian), 'middle order, paid to posted'),
+      tile('Posted with tracking', pct(s.trackedShare), 'of orders posted'),
+      tile('Late claims', pct(s.lateShare), 'of sales (+10% window)'),
+      tile('Express', pct(s.expressShare), 'of orders that shipped'),
+    ),
+    el('div', { class: 'card', style: 'margin-top:10px' },
+      el('h3', null, 'Waiting right now'),
+      el('div', { class: 'lines' },
+        el('div', null, el('span', null, 'Paid, not posted yet'), el('span', null, plural(n.toPost, 'order') + ' (' + n.toPostUnits + ' units)' + (n.oldestToPostDays != null ? ', oldest ' + plural(n.oldestToPostDays, 'day') : ''))),
+        el('div', null, el('span', null, 'Part sent, rest to go'), el('span', null, plural(n.partOrders, 'order'))),
+        el('div', null, el('span', null, 'Payment screenshots to check'), el('span', null, String(n.screenshots))),
+        el('div', null, el('span', null, 'Claimed, not paid yet'), el('span', null, plural(n.unpaid, 'order') + ', ' + dollars(n.unpaidValue))),
+      )),
+  );
+}
+
+function renderCustomers() {
+  const c = stats.customers;
+  const box = (title, rows) => rows.length ? el('div', { class: 'card' }, el('h3', null, title),
+    bars(rows.slice(0, 8), { label: (r) => r.key, value: (r) => r.sales, fmt: (r) => dollars(r.sales) + ' · ' + r.buyers })) : null;
+  return el('section', null,
+    el('h2', { id: 'customers' }, 'Where sales come from'),
+    el('div', { class: 'stack' },
+      box('Channel', c.sources),
+      box('State', c.states),
+      box('Shipping', c.shipping),
+    ),
+    el('p', { class: 'note' }, 'Each line: sales · number of buyers.'),
+  );
+}
+
+function sparkline(points) {
+  const W = 600, H = 120;
+  const vals = points.map((p) => p.members);
+  const lo = Math.min(...vals), hi = Math.max(...vals);
+  const span = Math.max(1, hi - lo);
+  const xy = points.map((p, i) => (points.length === 1 ? W / 2 : (i / (points.length - 1)) * (W - 20) + 10) + ',' + (H - 10 - ((p.members - lo) / span) * (H - 30)));
+  const svg = svgEl('svg', { class: 'chart', viewBox: '0 0 ' + W + ' ' + H, role: 'img', 'aria-label': 'Members over time' });
+  svg.append(svgEl('polyline', { points: xy.join(' '), fill: 'none', stroke: 'var(--accent)', 'stroke-width': 3, 'stroke-linejoin': 'round' }));
+  const first = points[0];
+  const last = points[points.length - 1];
+  return el('div', null, svg, el('div', { class: 'axis' },
+    el('span', null, day(first.date + 'T02:00:00Z') + ': ' + first.members),
+    el('span', null, day(last.date + 'T02:00:00Z') + ': ' + last.members)));
+}
+
+function renderServer() {
+  const c = stats.community;
+  const growth = c.growth.filter((g) => g.members != null);
+  const chat = c.chat;
+  const maxHour = Math.max(1, ...chat.hours);
+  const busiest = chat.hours.map((n, h) => ({ n, h })).sort((a, b) => b.n - a.n).slice(0, 3).filter((x) => x.n)
+    .map((x) => (x.h % 12 || 12) + (x.h < 12 ? 'am' : 'pm'));
+  return el('section', null,
+    el('h2', { id: 'server' }, 'The server'),
+    c.members != null ? el('div', { class: 'grid' },
+      tile('Members', String(c.members), c.joined30 + ' joined in 30 days'),
+      tile('Have bought', pct(c.boughtShare), c.boughtMembers + ' of ' + c.humans + ' members'),
+      tile('New members who bought', c.newJoiners60 ? pct(c.newJoinersBought / c.newJoiners60) : '-', c.newJoinersBought + ' of ' + c.newJoiners60 + ' who joined in 60 days'),
+      tile('Chatting', chat.since ? String(chat.active30) : '-', chat.since ? 'talked in 30 days · ' + chat.active7 + ' this week' : 'tracking from today'),
+    ) : el('p', { class: 'empty' }, "Couldn't reach Discord for the member numbers."),
+    el('div', { class: 'card', style: 'margin-top:10px' },
+      el('h3', null, 'Members over time'),
+      growth.length > 1 ? sparkline(growth) : el('p', { class: 'empty' }, 'Counting members once a day from today, so this fills in as the days go by.')),
+    el('div', { class: 'card', style: 'margin-top:10px' },
+      el('h3', null, 'Chat'),
+      chat.since ? [
+        el('p', { class: 'meta', style: 'margin:0 0 8px' }, (chat.perDay7 != null ? chat.perDay7 + ' messages a day this week · ' : '') + chat.active90 + ' people talked in 90 days' + (busiest.length ? ' · busiest at ' + busiest.join(', ') : '')),
+        el('div', { class: 'hours' }, chat.hours.map((n, h) => el('div', { style: 'height:' + Math.max(3, (n / maxHour) * 100) + '%', title: (h % 12 || 12) + (h < 12 ? 'am' : 'pm') + ': ' + n }))),
+        el('div', { class: 'hourlbl' }, el('span', null, '12am'), el('span', null, '6am'), el('span', null, '12pm'), el('span', null, '6pm')),
+        el('p', { class: 'note' }, 'Messages by hour of day, last 30 days. Counted since ' + day(chat.since + 'T02:00:00Z') + '; tickets are left out.'),
+      ] : el('p', { class: 'empty' }, 'Counting messages from today (just how many and when, never what was said).')),
+    el('div', { class: 'card', style: 'margin-top:10px' },
+      el('h3', null, 'Which invite links bring people'),
+      c.invites.links.length ? [
+        el('div', { class: 'list' }, c.invites.links.slice(0, 10).map((l) => el('div', null,
+          el('div', { class: 'head' }, el('span', { class: 'name' }, l.code ? 'discord.gg/' + l.code : "Link couldn't be told"), el('span', { class: 'num' }, l.bought + ' bought')),
+          el('div', { class: 'meta' }, plural(l.joins, 'join') + ' · ' + l.stayed + ' still here' + (l.inviter ? ' · made by ' + l.inviter : ''))))),
+        el('p', { class: 'note' }, 'Last 90 days, counted since ' + day(c.invites.since) + '. Make one invite link per place (Instagram bio, TikTok, website) to see which one brings buyers.'),
+      ] : el('p', { class: 'empty' }, 'Noting which invite link each new member uses from today. Tip: make a separate link for your Instagram bio, TikTok and website, and this shows which one brings buyers.')),
+  );
+}
+
+// ---------------------------------------------------------------- costs and profit
 
 async function saveCost(id, input, actual, fix, buttons) {
   if (!input.value.trim()) { toast('Type the cost first.'); input.focus(); return; }
@@ -122,7 +482,8 @@ async function saveCost(id, input, actual, fix, buttons) {
   }
 }
 
-function costEditor(p, { realOnly = false } = {}) {
+function costEditor(p, opts) {
+  const realOnly = opts && opts.realOnly;
   const input = el('input', { type: 'text', inputmode: 'decimal', placeholder: 'e.g. 101.50 or 3524/40', 'aria-label': 'Cost per unit for ' + p.name });
   const fix = el('input', { type: 'checkbox' });
   const real = el('button', { class: 'primary', type: 'button' }, 'Real cost');
@@ -143,21 +504,12 @@ function costChip(p) {
   return el('span', { class: 'chip ' + (p.actual ? 'real' : 'est') }, money(p.cost) + ' each · ' + (p.actual ? 'real' : 'estimate'));
 }
 
-function renderTiles() {
-  return el('section', { class: 'tiles' }, state.tiles.map((t) => el('div', { class: 'tile' },
-    el('div', { class: 'k' }, t.label + ' profit'),
-    el('div', { class: 'v' + (t.net < 0 ? ' neg' : '') }, money(t.net)),
-    el('div', { class: 's' }, money(t.sales) + ' sales' + (t.margin != null ? ' · ' + (t.margin * 100).toFixed(1) + '%' : '')
-      + (t.estimated ? ' · some est.' : '') + (t.missing ? ' · ' + plural(t.missing, 'product') + ' uncounted' : '')),
-  )));
-}
-
 function renderTodo() {
   const { noCost, estimated } = state.todo;
   const cards = [
     ...noCost.map((p) => el('div', { class: 'card todo' },
       el('div', { class: 'name' }, p.name),
-      el('div', { class: 'meta' }, plural(p.units, 'unit') + ' sold, no cost yet, so its profit isn\\'t counted'),
+      el('div', { class: 'meta' }, plural(p.units, 'unit') + " sold, no cost yet, so its profit isn't counted"),
       costEditor(p),
     )),
     ...estimated.map((p) => el('div', { class: 'card' },
@@ -166,19 +518,17 @@ function renderTodo() {
       costEditor(p, { realOnly: true }),
     )),
   ];
-  return el('section', null,
-    el('h2', null, cards.length ? 'To do (' + cards.length + ')' : 'To do'),
+  return el('div', null,
+    el('h3', null, cards.length ? 'Costs to put in (' + cards.length + ')' : 'Costs to put in'),
     cards.length ? el('div', { class: 'list' }, cards) : el('p', { class: 'empty' }, 'Nothing to do. Every product that sold has its real cost.'),
   );
 }
 
-function renderDetail() {
+function renderBreakdown() {
   const d = state.detail;
-  const select = el('select', { 'aria-label': 'Period', onchange: (e) => { period = e.target.value; load(); } },
-    Object.entries(state.periods).map(([k, label]) => el('option', { value: k, selected: k === state.period }, label)));
   const line = (k, v, cls) => el('div', { class: cls || '' }, el('span', null, k), el('span', { class: v < 0 ? 'neg' : '' }, money(v)));
-  return el('section', null,
-    el('div', { class: 'row' }, el('h2', { class: 'grow' }, 'Breakdown'), el('div', { style: 'width: 180px' }, select)),
+  return el('div', null,
+    el('h3', null, 'Profit, ' + d.label.toLowerCase()),
     el('div', { class: 'card' },
       d.orders ? el('div', { class: 'lines' },
         line('Sales (' + plural(d.orders, 'order') + ', ' + plural(d.units, 'unit') + ')', d.sales),
@@ -189,20 +539,14 @@ function renderDetail() {
         d.expenses ? line('Profit after expenses', d.net, 'total') : null,
       ) : el('p', { class: 'empty' }, 'No sales in this period.'),
       d.estimatedSales ? el('p', { class: 'note' }, Math.round(d.estimatedSales / (d.sales - d.uncountedSales) * 100) + '% of this profit uses estimated costs.') : null,
-      d.uncountedSales ? el('p', { class: 'note' }, money(d.uncountedSales) + ' of sales has no cost yet and isn\\'t in the profit.') : null,
+      d.uncountedSales ? el('p', { class: 'note' }, money(d.uncountedSales) + " of sales has no cost yet and isn't in the profit.") : null,
     ),
-    d.products.length ? el('div', { class: 'list', style: 'margin-top: 10px' }, d.products.map((p) => el('div', { class: 'card' },
-      el('div', { class: 'row' },
-        el('div', { class: 'name grow' }, p.product),
-        p.costed ? el('span', { class: p.profit < 0 ? 'neg' : '' }, money(p.profit) + (p.estimated ? ' est.' : '')) : el('span', { class: 'chip' }, 'no cost'),
-      ),
-      el('div', { class: 'meta' }, plural(p.units, 'unit') + ' · ' + money(p.sales) + ' sales'),
-    ))) : null,
   );
 }
 
-function renderProducts() {
-  const rows = state.products.slice(0, renderProducts.all ? undefined : 20).map((p) => {
+function renderCostList() {
+  const limit = shown.costs ? state.products.length : 12;
+  const rows = state.products.slice(0, limit).map((p) => {
     const box = el('div', { class: 'card' });
     const toggle = el('button', { class: 'link', type: 'button' }, 'Edit');
     let open = null;
@@ -219,10 +563,7 @@ function renderProducts() {
     );
     return box;
   });
-  const more = state.products.length > 20 && !renderProducts.all
-    ? el('button', { type: 'button', onclick: () => { renderProducts.all = true; render(); } }, 'Show all ' + state.products.length)
-    : null;
-  return el('section', null, el('h2', null, 'Costs'), el('div', { class: 'list' }, rows), more);
+  return el('div', null, el('h3', null, 'Every product'), el('div', { class: 'list' }, rows), more('costs', state.products.length, 12));
 }
 
 function renderExpenses() {
@@ -239,27 +580,47 @@ function renderExpenses() {
     } catch (err) { toast(err.message); add.disabled = false; }
   });
   const list = state.expenses.map((x) => el('div', { class: 'card row' },
-    el('div', { class: 'grow' }, el('div', { class: 'name' }, x.what), el('div', { class: 'meta' }, new Date(x.spent_on).toLocaleDateString('en-AU', { timeZone: 'Australia/Melbourne', day: 'numeric', month: 'short' }))),
+    el('div', { class: 'grow' }, el('div', { class: 'name' }, x.what), el('div', { class: 'meta' }, day(x.spent_on))),
     el('span', null, money(x.amount_cents)),
     el('button', { class: 'link', type: 'button', 'aria-label': 'Delete ' + x.what, onclick: async () => {
       if (!confirm('Delete "' + x.what + '"?')) return;
       try { await api('/dash/api/expense/delete', { id: x.id }); toast('Deleted.'); await load(); } catch (err) { toast(err.message); }
     } }, '✕'),
   ));
-  return el('section', null,
-    el('h2', null, 'Other expenses'),
+  return el('div', null,
+    el('h3', null, 'Other expenses'),
     el('div', { class: 'card' }, el('div', { class: 'expense-form' }, date, what, amount, add),
       el('p', { class: 'hint' }, 'Packaging, fees, tools. Not stock or labels: those are already counted on every order.')),
-    list.length ? el('div', { class: 'list', style: 'margin-top: 10px' }, list) : el('p', { class: 'empty' }, 'None since last month.'),
+    list.length ? el('div', { class: 'list', style: 'margin-top:10px' }, list) : el('p', { class: 'empty' }, 'None since last month.'),
+  );
+}
+
+function renderCosts() {
+  return el('section', null,
+    el('h2', { id: 'costs' }, 'Costs and profit'),
+    el('div', { class: 'stack' }, renderTodo(), renderBreakdown(), renderCostList(), renderExpenses()),
   );
 }
 
 function render() {
-  $('app').replaceChildren(renderTiles(), renderTodo(), renderDetail(), renderProducts(), renderExpenses());
+  $('period').value = period;
+  $('updated').textContent = 'Updated ' + new Date(stats.generatedAt).toLocaleTimeString('en-AU', { timeZone: 'Australia/Melbourne', hour: 'numeric', minute: '2-digit' });
+  $('app').replaceChildren(renderAlerts(), renderKey(), renderTrend(), renderBuyers(), renderProducts(), renderNights(), renderSpeed(), renderCustomers(), renderServer(), renderCosts());
 }
 
+$('period').addEventListener('change', (e) => { period = e.target.value; load(); });
 load();
 `;
+
+const PERIOD_OPTIONS = [
+  ['today', 'Today'], ['week', 'This week'], ['last_week', 'Last week'], ['month', 'This month'],
+  ['last_month', 'Last month'], ['30d', 'Last 30 days'], ['90d', 'Last 90 days'], ['all', 'All time'],
+];
+
+const JUMPS = [
+  ['now', 'Needs you'], ['overview', 'Numbers'], ['trend', 'Trend'], ['buyers', 'Buyers'], ['products', 'Products'],
+  ['nights', 'Sale nights'], ['speed', 'Speed'], ['customers', 'Channels'], ['server', 'Server'], ['costs', 'Costs'],
+];
 
 export function renderDashboardPage() {
   return `<!doctype html>
@@ -268,16 +629,19 @@ export function renderDashboardPage() {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Profit · TCG Pack Bot</title>
+<title>Dashboard · TCG Pack Bot</title>
 <style>${STYLE}</style>
 </head>
 <body>
 <main>
-  <header>
-    <h1>Profit</h1>
-    <p class="sub">TCG Pack Bot. Sales come from the bot, so all you add here is what things cost.</p>
+  <header class="top">
+    <div class="toprow">
+      <div class="titles"><h1>Dashboard</h1><p class="sub" id="updated">Loading…</p></div>
+      <select id="period" aria-label="Period">${PERIOD_OPTIONS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>
+    </div>
+    <nav class="jump" aria-label="Sections">${JUMPS.map(([id, l]) => `<a href="#${id}">${l}</a>`).join('')}</nav>
   </header>
-  <div id="app" style="display: grid; gap: 22px;"><p class="empty">Loading…</p></div>
+  <div id="app" style="display: grid; gap: 26px;"><p class="empty">Loading…</p></div>
 </main>
 <div id="toast" role="status" aria-live="polite"></div>
 <script>${SCRIPT}</script>
@@ -294,11 +658,11 @@ export function renderMessagePage(message) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Profit · TCG Pack Bot</title>
+<title>Dashboard · TCG Pack Bot</title>
 <style>${STYLE}</style>
 </head>
 <body>
-<main><div class="card"><h1>Profit dashboard</h1><p class="sub">${escapeHtml(message)}</p></div></main>
+<main style="padding-top:18px"><div class="card"><h1>Dashboard</h1><p class="sub">${escapeHtml(message)}</p></div></main>
 </body>
 </html>`;
 }
