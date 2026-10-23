@@ -25,6 +25,7 @@ import {
   cancelScheduledSale,
   createScheduledSale,
   findPendingSaleAt,
+  isProductInOpenSale,
   listUpcomingSales,
   productsFor,
 } from '../services/scheduledSaleService.js';
@@ -253,9 +254,11 @@ const routes = {
     const isNew = !product;
     if (product) {
       setProductPrice(product.id, Math.round(price * 100));
-      updateProductStock(product.id, quantity);
+      updateProductStock(product.id, quantity, { reactivate: false });
       if (shipping !== null) setProductShipping(product.id, Math.round(shipping * 100));
       if (limit !== null) setProductMaxPerBuyer(product.id, limit);
+      // A night still to come doesn't open claims now: the sale switches it on at the start.
+      if (startAt.getTime() > Date.now() && !isProductInOpenSale(product.id)) setProductActive(product.id, false);
     } else {
       product = createProduct({
         name,

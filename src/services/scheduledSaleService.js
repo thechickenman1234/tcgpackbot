@@ -128,6 +128,18 @@ export function productsFor(sale) {
   return ids.map((id) => getProductById(id)).filter(Boolean);
 }
 
+/** Whether a product is on a sale that is open right now. */
+export function isProductInOpenSale(productId) {
+  return getDb().prepare("SELECT product_ids FROM scheduled_sales WHERE status = 'open'").all()
+    .some((sale) => {
+      try {
+        return JSON.parse(sale.product_ids).includes(productId);
+      } catch {
+        return false;
+      }
+    });
+}
+
 /**
  * Opens the sale. Returns the products that were actually switched on, so
  * a product deleted between scheduling and 8pm does not silently become an
