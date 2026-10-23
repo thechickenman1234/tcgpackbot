@@ -114,6 +114,7 @@ Invalid / sold out / over limit → short error (or silent if banned).
 | `/ban` | Manually ban someone from claiming |
 | `/unban` | Manually lift a ban (**never automatic**) |
 | `/label` | Change what an order's shipping label says (run in its ticket, or pick the order). Opens a box with the current text; clear it to go back to the default. Topping up the order resets it |
+| ✏️ Change quantity | Fix how many an order is for (a claim of 20 that meant 10). Tap **Change quantity (staff)** on the ticket, or in an older ticket long-press any message → **Apps → Change quantity**. Type the number: stock, total and label follow, and the buyer is told what they now owe (or what gets refunded if they'd paid). Staff only; pending and paid orders |
 | `/banned` | Everyone banned from claims: when, why, by whom, and who has appealed. `lifted: True` adds bans lifted in the last 30 days |
 | `/dashboard` | Open the profit dashboard on your phone: type in costs (estimate or real) and other expenses, see profit by week, month and product. The button works once within 15 minutes; the device then stays signed in for 30 days |
 | `/cost` | Same as the dashboard's cost box: what one unit cost you, landed. Counts as the real cost unless `estimate: True`. `fix: True` re-prices orders already sold, for a cost typed wrong. `/newsale` takes `cost` too (as the estimate) |

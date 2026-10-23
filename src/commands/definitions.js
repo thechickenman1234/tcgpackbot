@@ -1,4 +1,9 @@
-import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
+import {
+  ApplicationCommandType,
+  ContextMenuCommandBuilder,
+  PermissionFlagsBits,
+  SlashCommandBuilder,
+} from 'discord.js';
 
 export const commandDefinitions = [
   new SlashCommandBuilder()
@@ -240,6 +245,12 @@ export const commandDefinitions = [
     .addBooleanOption((o) =>
       o.setName('fix').setDescription('Typed it wrong before? Also re-price orders already sold at the old cost').setRequired(false),
     ),
+
+  // Long-press (or right-click) a message in a ticket → Apps → Change quantity.
+  new ContextMenuCommandBuilder()
+    .setName('Change quantity')
+    .setType(ApplicationCommandType.Message)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
   new SlashCommandBuilder()
     .setName('dashboard')

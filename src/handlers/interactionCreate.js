@@ -20,11 +20,34 @@ import { INVOICE_PREFIX, handleInvoiceInteraction } from './invoiceMaker.js';
 import { PAYPROOF_PREFIX, handlePaymentProofButton } from './paymentProof.js';
 import { LABEL_PREFIX, handleLabelModal } from './labelEditor.js';
 import { LABEL_DROP_PREFIX, handleLabelDropInteraction } from './labelDrop.js';
+import {
+  QTY_CONTEXT_MENU,
+  QTY_PREFIX,
+  handleQuantityButton,
+  handleQuantityContextMenu,
+  handleQuantityModal,
+} from './quantityEditor.js';
 
 export async function handleInteractionCreate(interaction) {
   try {
     if (interaction.isChatInputCommand()) {
       await handleSlashCommand(interaction);
+      return;
+    }
+
+    // Long-press a message in a ticket → Apps → Change quantity.
+    if (interaction.isMessageContextMenuCommand?.() && interaction.commandName === QTY_CONTEXT_MENU) {
+      await handleQuantityContextMenu(interaction);
+      return;
+    }
+
+    // The ticket's Change quantity button and its pop-up.
+    if (interaction.isButton() && interaction.customId.startsWith(QTY_PREFIX)) {
+      await handleQuantityButton(interaction);
+      return;
+    }
+    if (interaction.isModalSubmit() && interaction.customId.startsWith(`${QTY_PREFIX}m:`)) {
+      await handleQuantityModal(interaction);
       return;
     }
 

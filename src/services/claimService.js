@@ -27,7 +27,7 @@ import {
 } from './orderService.js';
 import { buildPaymentEmbed } from './paymentEmbed.js';
 import { handlePostClaimSaleState } from './saleAnnouncements.js';
-import { UPDATE_SHIPPING_BUTTON_PREFIX } from '../ui/customIds.js';
+import { QTY_PREFIX, UPDATE_SHIPPING_BUTTON_PREFIX } from '../ui/customIds.js';
 
 export { UPDATE_SHIPPING_BUTTON_PREFIX };
 
@@ -55,6 +55,12 @@ function shippingUpdateRow(orderId) {
     new ButtonBuilder()
       .setCustomId(`${UPDATE_SHIPPING_BUTTON_PREFIX}${orderId}`)
       .setLabel('Update shipping')
+      .setStyle(ButtonStyle.Secondary),
+    // Staff only (the pop-up refuses anyone else): fix how many it's for.
+    new ButtonBuilder()
+      .setCustomId(`${QTY_PREFIX}${orderId}`)
+      .setLabel('Change quantity (staff)')
+      .setEmoji('✏️')
       .setStyle(ButtonStyle.Secondary),
   );
 }

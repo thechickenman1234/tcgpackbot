@@ -3,7 +3,7 @@ import { generateOrderReference } from '../utils/orderRef.js';
 import { addDaysIso, addHoursIso, nowIso } from '../utils/permissions.js';
 import { config } from '../config.js';
 import { ensureBuyer } from './buyerService.js';
-import { releaseStock, reserveStock, resolveTierPricing } from './productService.js';
+import { getProductById, getProductTiers, releaseStock, reserveStock, resolveTierPricing } from './productService.js';
 
 export function getOrderById(id) {
   return getDb().prepare('SELECT * FROM orders WHERE id = ?').get(id);
@@ -175,6 +175,41 @@ export function topUpPendingOrder({ order, product, quantity, claimMessageId = n
     toppedUp: true,
     added: quantity,
   };
+}
+
+/**
+ * Staff fixing how many an order is for (a claim of 20 that meant 10).
+ *
+ * Stock moves by the difference without switching the product on or off,
+ * and without the limits a buyer's claim has: staff know what they're doing.
+ * The price per unit stays what they claimed at, unless the product has
+ * bulk tiers, which are read again for the new number. A custom label goes
+ * back to the default so it prints the new number. Shipped orders can't
+ * change.
+ */
+export function changeOrderQuantity(orderId, newQuantity) {
+  const order = getOrderById(orderId);
+  if (!order) return { ok: false, reason: 'not_found' };
+  if (!['pending', 'paid'].includes(order.status)) return { ok: false, reason: 'invalid_status', order };
+  if (!Number.isInteger(newQuantity) || newQuantity < 1) return { ok: false, reason: 'bad_quantity', order };
+  const diff = newQuantity - order.quantity;
+  if (!diff) return { ok: true, order, before: order, diff: 0 };
+
+  const product = getProductById(order.product_id);
+  let unit = order.unit_price_cents;
+  if (product && getProductTiers(product)) {
+    const markup = order.source === 'late' ? (product.late_markup_percent || config.lateMarkupPercent) : 0;
+    unit = applyLateMarkup(resolveTierPricing(product, newQuantity).priceCents, markup);
+  }
+
+  const db = getDb();
+  db.transaction(() => {
+    db.prepare('UPDATE products SET quantity_available = MAX(0, quantity_available - ?), updated_at = ? WHERE id = ?')
+      .run(diff, nowIso(), order.product_id);
+    db.prepare('UPDATE orders SET quantity = ?, unit_price_cents = ?, total_cents = ?, label_reference = NULL WHERE id = ?')
+      .run(newQuantity, unit, unit * newQuantity + order.shipping_cents, orderId);
+  })();
+  return { ok: true, order: getOrderById(orderId), before: order, diff };
 }
 
 /** Orders this buyer has that have not gone out yet — pending or paid. */
