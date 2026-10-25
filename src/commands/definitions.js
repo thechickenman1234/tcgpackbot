@@ -694,6 +694,53 @@ export const commandDefinitions = [
     ),
 
   new SlashCommandBuilder()
+    .setName('stream')
+    .setDescription('TCG Pack Bot shows on Whatnot: plan one, or say we\'re live')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addSubcommand((s) =>
+      s
+        .setName('live')
+        .setDescription('Post "we\'re live" with the stream link in announcements')
+        .addStringOption((o) =>
+          o.setName('title').setDescription('What\'s on, e.g. Opening 10 VSTAR Universe boxes').setRequired(false).setMaxLength(200),
+        )
+        .addBooleanOption((o) =>
+          o.setName('ping').setDescription('Ping @everyone (default no)').setRequired(false),
+        ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName('plan')
+        .setDescription('Plan a show: an event now, and "we\'re live" posts itself when it starts')
+        .addStringOption((o) =>
+          o.setName('date').setDescription('Pick a date').setRequired(true).setAutocomplete(true),
+        )
+        .addStringOption((o) =>
+          o.setName('time').setDescription('Pick a start time').setRequired(true).setAutocomplete(true),
+        )
+        .addStringOption((o) =>
+          o.setName('title').setDescription('What\'s on (default: TCG Pack Bot live)').setRequired(false).setMaxLength(90),
+        )
+        .addIntegerOption((o) =>
+          o.setName('hours').setDescription('How long (default 2)').setRequired(false).setMinValue(1).setMaxValue(12),
+        )
+        .addBooleanOption((o) =>
+          o.setName('ping').setDescription('Ping @everyone when it starts (default no)').setRequired(false),
+        )
+        .addAttachmentOption((o) =>
+          o.setName('image').setDescription('Cover picture').setRequired(false),
+        ),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName('link')
+        .setDescription('Save the stream link the other commands use')
+        .addStringOption((o) =>
+          o.setName('url').setDescription('The Whatnot profile link, e.g. https://www.whatnot.com/user/tcgpackbot').setRequired(true),
+        ),
+    ),
+
+  new SlashCommandBuilder()
     .setName('claimed')
     .setDescription('How many of each product to order — includes claims that have not been paid yet')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)

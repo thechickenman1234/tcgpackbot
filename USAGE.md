@@ -205,6 +205,18 @@ A **final order sheet** follows about 24 hours later, after the late window has 
 
 ---
 
+## Whatnot shows (`/stream`)
+
+TCG Pack Bot streams on Whatnot, where people buy inside the show. The Discord's job is sending viewers there. Staff only.
+
+- `/stream link url:` saves the Whatnot profile link once. The rest use it.
+- `/stream plan date: time:` plans a show: it goes up as a Discord event now, and "🔴 We're live on Whatnot!" with the link posts itself in announcements when it starts. Add a `title` for what's on; `ping: True` pings @everyone at the start. Show moved or off? Delete the event and `/unschedule` the post (the reply gives its number).
+- `/stream live` posts "we're live" right now, for a show nobody planned.
+
+Whatnot gives the bot no way to see when a show starts, which is why a planned show queues its own post. Claude can do the same through `POST /ops/stream/plan` and `POST /ops/stream/live`.
+
+---
+
 ## Profit
 
 Profit is worked out from what the bot already knows, so nothing is typed in per order:

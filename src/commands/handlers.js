@@ -36,6 +36,7 @@ import { handleLabelCommand, labelAutocomplete } from '../handlers/labelEditor.j
 import {
   costAutocomplete, handleCostCommand, handleDashboardCommand, handleOrderSheetCommand, handleProfitCommand,
 } from '../handlers/profitCommands.js';
+import { handleStreamCommand } from '../handlers/streamCommands.js';
 import {
   addProductToSale,
   cancelScheduledSale,
@@ -1017,7 +1018,7 @@ export async function handleAutocomplete(interaction) {
     return;
   }
 
-  if (['schedulesale', 'newsale', 'schedule', 'event'].includes(interaction.commandName)) {
+  if (['schedulesale', 'newsale', 'schedule', 'event', 'stream'].includes(interaction.commandName)) {
     const focused = interaction.options.getFocused(true);
 
     // /newsale calls it "name" because it also creates the product. You can
@@ -2055,6 +2056,8 @@ export async function handleSlashCommand(interaction) {
       return handleDashboardCommand(interaction);
     case 'ordersheet':
       return handleOrderSheetCommand(interaction);
+    case 'stream':
+      return handleStreamCommand(interaction);
     case 'appeal':
       return handleAppeal(interaction);
     case 'order':

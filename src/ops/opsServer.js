@@ -23,6 +23,7 @@ import { handleDashboard } from '../dashboard/dashboard.js';
 import { syncWise } from '../services/wiseService.js';
 import { untaggedPayments } from '../services/moneyService.js';
 import { latestOrderSheet } from '../services/orderSheet.js';
+import { getStreamLink, planStream, postLive, setStreamLink } from '../services/streamService.js';
 import {
   addProductToSale,
   cancelScheduledSale,
@@ -428,6 +429,36 @@ const routes = {
     const period = query.get('period') || 'week';
     if (!PERIODS[period]) fail(`period must be one of: ${Object.keys(PERIODS).join(', ')}.`);
     return profitFor(period, { product: query.get('product') || null });
+  },
+
+  /** Same as /stream plan: the show's event, and its "we're live" post queued for the start. */
+  'POST /ops/stream/plan': async (client, body) => {
+    const guild = await client.guilds.fetch(config.guildId);
+    const result = await planStream(client, guild, {
+      date: body.date, time: body.time, title: body.title || null, hours: Number(body.hours) || 2, ping: body.ping === true,
+    });
+    if (result.error) fail(result.error.replace(/`/g, ''));
+    return {
+      text: `Show planned for ${formatMelbourne(result.start.toISOString())}; "we're live" posts then.`,
+      event: eventUrl(guild.id, result.event.id),
+      postId: result.postId,
+    };
+  },
+
+  /** Same as /stream live: "we're live" in announcements now. */
+  'POST /ops/stream/live': async (client, body) => {
+    const result = await postLive(client, { title: body.title || null, ping: body.ping === true });
+    if (result.error) fail(result.error.replace(/`/g, ''));
+    return { text: 'Posted.', url: result.url };
+  },
+
+  'GET /ops/stream': async () => ({ link: getStreamLink() }),
+
+  /** Same as /stream link. */
+  'POST /ops/stream/link': async (_client, body) => {
+    const result = setStreamLink(body.url);
+    if (result.error) fail(result.error);
+    return { text: `Saved ${result.link}.`, platform: result.platform };
   },
 
   /** Same as /ordersheet: the last sale night's order, with today's numbers. */
