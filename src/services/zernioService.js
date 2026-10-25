@@ -91,6 +91,22 @@ export async function findConversation(username) {
   return (res?.data || []).find((c) => String(c.participantUsername || '').toLowerCase() === want) || null;
 }
 
+/**
+ * Proves the key works by reading the inbox, and says until when the bot can
+ * message someone: Instagram allows it for 24 hours after their last message.
+ * Sends nothing. A key Zernio turns down throws, as every call does.
+ */
+export async function checkChat(username) {
+  if (!zernioReady()) return { key: false };
+  const convo = await findConversation(username);
+  if (!convo) return { key: true, chat: false };
+  const res = await call('GET', `/inbox/conversations/${encodeURIComponent(convo.id)}/messages?accountId=${config.zernioInstagramId}&sortOrder=desc&limit=50`);
+  const theirs = (res?.messages || []).find((m) => m.direction === 'incoming');
+  const lastFromThem = theirs?.createdAt || null;
+  const until = lastFromThem ? new Date(Date.parse(lastFromThem) + 24 * 3600000).toISOString() : null;
+  return { key: true, chat: true, conversationId: convo.id, lastFromThem, canMessageUntil: until, open: Boolean(until) && Date.parse(until) > Date.now() };
+}
+
 /** Zernio signs each delivery: lowercase hex HMAC-SHA256 of the raw body. */
 export function verifySignature(rawBody, signature) {
   if (!config.zernioWebhookSecret || !signature) return false;

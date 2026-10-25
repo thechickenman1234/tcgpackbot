@@ -24,7 +24,7 @@ import { syncWise } from '../services/wiseService.js';
 import { untaggedPayments } from '../services/moneyService.js';
 import { latestOrderSheet } from '../services/orderSheet.js';
 import { getStreamLink, planStream, postLive, setStreamLink } from '../services/streamService.js';
-import { verifySignature } from '../services/zernioService.js';
+import { checkChat, verifySignature } from '../services/zernioService.js';
 import { getOrderByToken, openWholesaleOrders, orderCode } from '../services/wholesaleOrders.js';
 import {
   handleInstagramDm, postFormAlert, startOrderFromText, startOrderFromWebsite,
@@ -635,6 +635,21 @@ const routes = {
       boxes: o.boxes_cents / 100, shipping: o.shipping_cents == null ? null : o.shipping_cents / 100, lines: o.lines,
     })),
   }),
+
+  /**
+   * Checks ZERNIO_API_KEY by reading the @tcgpackbot inbox (it sends
+   * nothing), and says until when the bot can ask the supplier for shipping.
+   */
+  'GET /ops/zernio': async () => {
+    const supplier = `@${config.wholesaleSupplier}`;
+    const check = await checkChat(config.wholesaleSupplier).catch((err) => fail(`Zernio turned the key down: ${err.message}`, 502));
+    if (!check.key) fail('ZERNIO_API_KEY is not set on Railway yet.');
+    if (!check.chat) return { ...check, text: `The key works, but there is no chat with ${supplier} on @tcgpackbot yet.` };
+    const text = check.open
+      ? `The key works. ${supplier} last messaged ${formatMelbourne(check.lastFromThem)}, so the bot can message them until ${formatMelbourne(check.canMessageUntil)}.`
+      : `The key works, but ${supplier} hasn't messaged in the last 24 hours, so the bot can't message them until they do.`;
+    return { ...check, text };
+  },
 
   /** Same as /wholesale new: an order card from what a shop asked for. */
   'POST /ops/wholesale': async (client, body) => {

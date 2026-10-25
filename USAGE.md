@@ -209,7 +209,7 @@ A **final order sheet** follows about 24 hours later, after the late window has 
 
 Orders come in three ways, and each becomes a card in the wholesale channel: `WHOLESALE_CHANNEL_ID`, else a channel with "wholesale" in its name that @everyone can't see, else the staff log. Cards hold customers' numbers and the supplier's name, so they never go to a public channel.
 
-- **Send order on the price page** (tcgpackbot.com/wholesale-pricing, the link to send anyone). The shop picks boxes, says where to send its quote (Instagram, WhatsApp, email, phone, Messenger or Discord) and taps Send order. The page posts through Netlify's proxy (`/api/wholesale-order`) to the bot, which prices it again from today's sheet (the page's numbers are never trusted) and pings staff. A double tap or a retry within ten minutes is the same order. At most 6 orders an hour from one address; the minimum is 5 boxes per country.
+- **Send order on the price page** (tcgpackbot.com/wholesale-pricing, the link to send anyone). The shop picks boxes, says where to send its quote (Instagram, WhatsApp, email, phone, Messenger or Discord) and taps Send order. The page posts through Netlify's proxy (`/api/wholesale-order`) to the bot, which prices it again from today's sheet (the page's numbers are never trusted) and pings staff. A double tap or a retry within ten minutes is the same order. At most 10 orders an hour from one address; the minimum is 5 boxes per country.
 - **An Instagram DM to @tcgpackbot** with a cart pasted from the page (Copy my order). Zernio sends each DM to `/hooks/zernio` (`ZERNIO_API_KEY` and `ZERNIO_WEBHOOK_SECRET` on Railway).
 - **`/wholesale new instagram: items:`** for anything else, one per line or comma: `10 vstar universe, 20 cn gem vol 6 @ 95, 5 jp 30th`. `jp` or `cn` picks the country; `@ 95` sets the price per box (the Chinese sheet often has none). Lines it can't match are listed on the card; fix them with **Edit boxes**.
 
@@ -225,7 +225,7 @@ Then:
 
 **Website forms** (contact, wholesale enquiry, host a machine) reach Discord through the site's Netlify function, signed with `FORMS_SECRET` (the same value on Netlify and Railway), at `/public/form`. A wholesale enquiry goes to the wholesale channel with the how-to-order reply ready to paste; the others go to the staff log. The enquiry page's thank-you shows the same steps with the price list button.
 
-`/wholesale howto [name]` gives the how-to-order message with the price list link, to paste anywhere. `/wholesale list` shows the open orders. Claude can do the same through `GET /ops/wholesale` and `POST /ops/wholesale`.
+`/wholesale howto [name]` gives the how-to-order message with the price list link, to paste anywhere. `/wholesale list` shows the open orders. Claude can do the same through `GET /ops/wholesale` and `POST /ops/wholesale`. `GET /ops/zernio` checks `ZERNIO_API_KEY` by reading the @tcgpackbot inbox (it sends nothing) and says until when the bot can message the supplier.
 
 ---
 
