@@ -28,6 +28,7 @@ import { checkChat, verifySignature } from '../services/zernioService.js';
 import { batchView, getStockBatch, setStep, stockBoard } from '../services/stockTracker.js';
 import { BACKUP_FORM_NAME, healthReport } from '../services/healthService.js';
 import { refreshStockCard } from '../handlers/stockCard.js';
+import { shippingBoard } from '../services/shippingBoard.js';
 import { buildBrief } from '../jobs/dailyBrief.js';
 import { getOrderByToken, openWholesaleOrders, orderCode } from '../services/wholesaleOrders.js';
 import {
@@ -657,6 +658,9 @@ const routes = {
 
   /** Each sale night's stock and where it's up to, as the dashboard shows it. */
   'GET /ops/stock': async () => stockBoard(),
+
+  /** What's paid and not posted, and what shipped in the last 2 weeks, as the dashboard's Shipping shows it. */
+  'GET /ops/shipping': async () => shippingBoard(),
 
   /** Ticks (or with done: false, unticks) ordered, paid, onway or arrived on one night's stock. */
   'POST /ops/stock/step': async (client, body) => {

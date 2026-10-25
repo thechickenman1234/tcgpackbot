@@ -21,6 +21,12 @@ import { syncWise } from '../services/wiseService.js';
 import { batchView, getStockBatch, setStep, stockBoard } from '../services/stockTracker.js';
 import { healthReport } from '../services/healthService.js';
 import { refreshStockCard } from '../handlers/stockCard.js';
+import {
+  addToLabelList, makeLabels, remakeLabels, searchBuyers, shipOrders, shippingBoard, unshipFromBoard,
+} from '../services/shippingBoard.js';
+import { pushToSheetInBackground } from '../services/sheetService.js';
+import { postTrackingToThread } from '../services/trackingService.js';
+import { grantBuyerRole } from '../services/buyerRoleService.js';
 import { renderDashboardPage, renderMessagePage } from './page.js';
 
 /**
@@ -322,6 +328,39 @@ const actions = {
     await refreshStockCard(client, v);
     return { text: result.text };
   },
+  'POST /dash/api/ship': async (client, who, body) => {
+    const result = shipOrders(body.ids, { tracking: body.tracking || null });
+    if (result.error) return { status: 400, error: result.error };
+    // With a code it's Add tracking: the buyer is told in their ticket.
+    if (body.tracking) await postTrackingToThread(client, result.shipped[0]);
+    pushToSheetInBackground(result.shipped, 'posted');
+    const names = result.shipped.map((o) => `${o.quantity}x ${o.product_name} (${o.reference_code})`);
+    audit(client, who, `Marked shipped: ${names.slice(0, 15).join(', ')}${names.length > 15 ? ` and ${names.length - 15} more` : ''}${body.tracking ? ', tracking sent to the buyer' : ''}.`);
+    return { text: result.text };
+  },
+  'POST /dash/api/unship': async (client, who, body) => {
+    const result = unshipFromBoard(body.id);
+    if (result.error) return { status: 400, error: result.error };
+    pushToSheetInBackground([result.order], 'unship');
+    audit(client, who, `Back on the shipping list: ${result.order.quantity}x ${result.order.product_name} (${result.order.reference_code}).`);
+    return { text: result.text };
+  },
+  'POST /dash/api/labels': async (client, who, body) => {
+    const result = body.batchId ? remakeLabels(Number(body.batchId)) : makeLabels(Number(body.productId), who);
+    if (result.error) return { status: 400, error: result.error };
+    pushToSheetInBackground(result.orders, 'labels');
+    audit(client, who, `Labels ${body.batchId ? 'made again' : 'made'}: batch ${result.batchId}, ${result.orders.length} parcels.`);
+    const warn = result.missing.length ? ` ${result.missing.length} have no address yet: ${result.missing.slice(0, 5).join(', ')}.` : '';
+    return { text: `Labels for ${result.orders.length} parcels downloaded.${warn}`, csv: result.csv, filename: result.filename };
+  },
+  'POST /dash/api/label-person': async (client, who, body) => {
+    const result = addToLabelList(body);
+    if (result.error) return { status: 400, error: result.error };
+    pushToSheetInBackground([result.order], 'logsale');
+    await grantBuyerRole(client, result.order.buyer_id).catch(() => false);
+    audit(client, who, result.text);
+    return { text: result.text };
+  },
   'POST /dash/api/expense/delete': async (client, who, body) => {
     if (!deleteExpense(Number(body.id))) return { status: 404, error: 'Already gone. Reload the page.' };
     audit(client, who, `Expense #${Number(body.id)} deleted.`);
@@ -365,7 +404,10 @@ export async function handleDashboard(client, req, res, url) {
       return sendJson(res, 200, { ok: true, ...dashboardData(url.searchParams.get('period') || 'month') });
     }
     if (req.method === 'GET' && path === '/dash/api/ops') {
-      return sendJson(res, 200, { ok: true, stock: stockBoard(), health: await healthReport() });
+      return sendJson(res, 200, { ok: true, stock: stockBoard(), health: await healthReport(), shipping: shippingBoard() });
+    }
+    if (req.method === 'GET' && path === '/dash/api/buyers') {
+      return sendJson(res, 200, { ok: true, buyers: searchBuyers(url.searchParams.get('q')) });
     }
 
     const action = actions[`${req.method} ${path}`];

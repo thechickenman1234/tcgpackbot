@@ -116,6 +116,20 @@ svg.chart { width: 100%; height: auto; display: block; }
 .stuck { font-size: 14px; font-weight: 650; margin: 6px 0 0; }
 .stuck.bad { color: var(--bad); } .stuck.warn { color: var(--warn); }
 .indent { margin-left: 18px; }
+.parcels { gap: 0; }
+.parcel { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; align-items: start; padding: 9px 0; border-top: 1px solid var(--line); }
+.parcel:first-child { border-top: 0; }
+.parcel label { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; min-width: 0; }
+.parcel input[type=checkbox] { width: 22px; height: 22px; margin: 1px 0 0; flex: 0 0 auto; accent-color: var(--accent); }
+.parcel .slot { grid-column: 1 / -1; }
+.chip.bad { background: var(--warn-bg); color: var(--bad); }
+.search { margin: 0 0 10px; }
+.results { display: grid; gap: 6px; margin-top: 6px; }
+.results button { text-align: left; white-space: normal; }
+.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.form-grid .full { grid-column: 1 / -1; }
+#shipbar { position: fixed; left: 16px; right: 16px; bottom: 16px; max-width: 520px; margin: 0 auto; display: none; gap: 8px; align-items: center; padding: 10px 12px; border-radius: 14px; background: var(--card); border: 1px solid var(--accent); box-shadow: 0 6px 24px rgba(0, 0, 0, .25); z-index: 9; }
+#shipbar.show { display: flex; }
 `;
 
 const SCRIPT = `
@@ -124,6 +138,10 @@ let state = null;
 let stats = null;
 let ops = null;
 let period = 'month';
+// Shipping: the parcels ticked but not saved yet, and the search box's text.
+const picked = new Set();
+let shipFilter = '';
+let chosenBuyer = null;
 let buyerView = 'period';
 const shown = {};
 
@@ -223,7 +241,7 @@ function renderAlerts() {
   if (n.costsMissing) a(plural(n.costsMissing, 'product') + ' sold with no cost', '#costs');
   if (state.money && state.money.untagged.length) a(plural(state.money.untagged.length, 'Wise payment') + ' to tag', '#money');
   if (n.screenshots) a(plural(n.screenshots, 'payment screenshot') + ' to check', '#speed');
-  if (n.toPost) a(plural(n.toPost, 'paid order') + ' to post' + (n.oldestToPostDays ? ' (oldest ' + plural(n.oldestToPostDays, 'day') + ')' : ''), '#speed', n.oldestToPostDays < 3);
+  if (n.toPost) a(plural(n.toPost, 'paid order') + ' to post' + (n.oldestToPostDays ? ' (oldest ' + plural(n.oldestToPostDays, 'day') + ')' : ''), '#shipping', n.oldestToPostDays < 3);
   if (n.partOrders) a(plural(n.partOrders, 'part order') + ' waiting for the rest', '#speed');
   if (n.unpaid) a(plural(n.unpaid, 'unpaid claim') + ' (' + dollars(n.unpaidValue) + ')', '#speed', true);
   if (n.estimates) a(plural(n.estimates, 'product') + ' on estimated costs', '#costs', true);
@@ -305,6 +323,229 @@ function renderTrend() {
       ))),
     ),
   );
+}
+
+// ---------------------------------------------------------------- shipping
+
+const SOURCE_NAMES = { facebook: 'Facebook', instagram: 'Instagram', dm: 'Discord DM', in_person: 'In person', wholesale: 'Wholesale', other: 'Other' };
+const matches = (p) => !shipFilter || (p.buyer + ' ' + p.product + ' ' + p.ref + ' ' + (p.place || '')).toLowerCase().includes(shipFilter);
+
+function updateShipBar() {
+  const bar = $('shipbar');
+  if (!picked.size) { bar.classList.remove('show'); bar.replaceChildren(); return; }
+  const save = el('button', { class: 'primary', type: 'button' }, 'Mark ' + picked.size + ' shipped');
+  save.addEventListener('click', () => shipPicked(save));
+  bar.replaceChildren(
+    el('span', { class: 'grow' }, plural(picked.size, 'parcel') + ' ticked'),
+    el('button', { type: 'button', class: 'link', onclick: () => { picked.clear(); renderShipList(); updateShipBar(); } }, 'Clear'),
+    save);
+  bar.classList.add('show');
+}
+
+async function shipPicked(btn) {
+  btn.disabled = true;
+  try {
+    const r = await api('/dash/api/ship', { ids: [...picked] });
+    picked.clear();
+    toast(r.text);
+    await load();
+  } catch (err) {
+    toast(err.message);
+    btn.disabled = false;
+  }
+}
+
+async function downloadLabels(body, btn) {
+  btn.disabled = true;
+  try {
+    const r = await api('/dash/api/labels', body);
+    const url = URL.createObjectURL(new Blob([r.csv], { type: 'text/csv' }));
+    const a = el('a', { href: url, download: r.filename });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    toast(r.text);
+    await load();
+  } catch (err) {
+    toast(err.message);
+    btn.disabled = false;
+  }
+}
+
+function trackingForm(p, slot) {
+  const code = el('input', { type: 'text', autocomplete: 'off', placeholder: 'Tracking number', 'aria-label': 'Tracking number for ' + p.buyer });
+  const save = el('button', { class: 'primary', type: 'button' }, 'Shipped');
+  save.addEventListener('click', () => { picked.delete(p.id); post('/dash/api/ship', { ids: [p.id], tracking: code.value }, [save]); });
+  slot.replaceChildren(
+    el('div', { class: 'edit', style: 'grid-template-columns:minmax(0,1fr) auto;margin-top:6px' }, code, save),
+    el('p', { class: 'hint' }, 'They get the tracking number in their ticket.'));
+  code.focus();
+}
+
+function parcelRow(p) {
+  const box = el('input', { type: 'checkbox', checked: picked.has(p.id) });
+  box.addEventListener('change', () => { if (box.checked) picked.add(p.id); else picked.delete(p.id); updateShipBar(); });
+  const slot = el('div', { class: 'slot' });
+  const tags = [
+    p.express ? el('span', { class: 'chip est' }, 'Express') : null,
+    p.sent ? el('span', { class: 'chip' }, p.sent + ' sent already') : null,
+    p.address ? null : el('span', { class: 'chip bad' }, 'No address'),
+  ].filter(Boolean);
+  return el('div', { class: 'parcel' },
+    el('label', null, box, el('span', { class: 'grow' },
+      el('span', { class: 'name' }, p.buyer), p.place ? el('span', { class: 'meta' }, ' · ' + p.place) : null,
+      el('div', { class: 'meta' }, p.qty + 'x ' + p.product + ' · paid ' + (p.days ? plural(p.days, 'day') + ' ago' : 'today') + ' · ' + p.ref),
+      tags.length ? el('div', { class: 'row', style: 'margin-top:4px' }, tags) : null)),
+    el('button', { type: 'button', class: 'link', onclick: () => trackingForm(p, slot) }, 'Tracking'),
+    slot);
+}
+
+function shipGroup(key, title, sub, parcels, action) {
+  const visible = parcels.filter(matches);
+  if (!visible.length) return null;
+  const limit = shipFilter || shown[key] ? visible.length : 8;
+  const allTicked = visible.every((p) => picked.has(p.id));
+  const tickAll = el('button', { type: 'button', class: 'link', onclick: () => {
+    visible.forEach((p) => (allTicked ? picked.delete(p.id) : picked.add(p.id)));
+    renderShipList();
+    updateShipBar();
+  } }, allTicked ? 'Untick all' : 'Tick all ' + visible.length);
+  return el('div', { class: 'card' },
+    el('div', { class: 'head' }, el('span', { class: 'name' }, title), el('span', { class: 'num' }, plural(visible.length, 'parcel'))),
+    el('div', { class: 'meta' }, sub),
+    el('div', { class: 'row', style: 'margin:6px 0 2px' }, action, tickAll),
+    el('div', { class: 'list parcels' }, visible.slice(0, limit).map(parcelRow)),
+    shipFilter ? null : more(key, visible.length, 8));
+}
+
+function shipListContent() {
+  const s = ops.shipping;
+  const out = [];
+  for (const g of s.printed) {
+    const again = el('button', { type: 'button', onclick: (e) => downloadLabels({ batchId: g.batchId }, e.target) }, 'Labels again');
+    out.push(shipGroup('b' + g.batchId, g.title, 'Labels made ' + day(g.printedAt) + ' (batch ' + g.batchId + ')', g.parcels, again));
+  }
+  for (const g of s.unprinted) {
+    const make = el('button', { type: 'button', class: 'primary', onclick: (e) => downloadLabels({ productId: g.productId }, e.target) }, 'Make labels');
+    out.push(shipGroup('u' + g.productId, g.product, 'Not printed yet', g.parcels, make));
+  }
+  const shipped = s.shipped.filter(matches);
+  if (shipped.length) {
+    const box = el('details', { class: 'card', open: Boolean(shipFilter) || Boolean(shown.shipped) },
+      el('summary', null, 'Shipped in the last 2 weeks (' + shipped.length + ')'),
+      el('div', { class: 'list parcels', style: 'margin-top:8px' }, shipped.slice(0, shipFilter ? 200 : 60).map((p) => el('div', { class: 'parcel' },
+        el('div', null,
+          el('span', { class: 'name' }, p.buyer),
+          el('div', { class: 'meta' }, p.qty + 'x ' + p.product + ' · ' + day(p.shippedAt) + ' · ' + (p.tracking || 'no tracking'))),
+        el('button', { type: 'button', class: 'link', onclick: (e) => post('/dash/api/unship', { id: p.id }, [e.target]) }, 'Undo')))));
+    box.addEventListener('toggle', () => { shown.shipped = box.open; });
+    out.push(box);
+  }
+  const kept = out.filter(Boolean);
+  return kept.length ? kept : [el('p', { class: 'empty' }, shipFilter ? 'Nothing matches "' + shipFilter + '".' : 'Nothing waiting to ship. 🎉')];
+}
+
+function renderShipList() {
+  const list = $('shiplist');
+  if (list) list.replaceChildren(...shipListContent());
+}
+
+function personForm() {
+  const f = (placeholder, extra) => el('input', Object.assign({ type: 'text', placeholder, 'aria-label': placeholder }, extra || {}));
+  const search = f('Search past buyers (optional)', { autocomplete: 'off' });
+  const results = el('div', { class: 'results' });
+  const using = el('div');
+  const name = f('Name');
+  const phone = f('Phone (optional)', { inputmode: 'tel' });
+  const street = f('Street address', { class: 'full' });
+  const suburb = f('Suburb');
+  const state = el('select', { 'aria-label': 'State' }, el('option', { value: '' }, 'State'), ops.shipping.states.map((x) => el('option', { value: x }, x)));
+  const postcode = f('Postcode', { inputmode: 'numeric', maxlength: '4' });
+  const product = productSelect('What they bought', true);
+  product.lastChild.textContent = 'Something else…';
+  const newName = f('What is it?', { style: 'display:none' });
+  product.addEventListener('change', () => { newName.style.display = product.value === 'new' ? '' : 'none'; });
+  const qty = f('How many', { inputmode: 'numeric', value: '1' });
+  const paid = f('Paid $', { inputmode: 'decimal' });
+  const method = el('select', { 'aria-label': 'Postage' }, el('option', { value: 'standard' }, 'Standard post'), el('option', { value: 'express' }, 'Express post'));
+  const source = el('select', { 'aria-label': 'Where they bought' }, ops.shipping.sources.map((x) => el('option', { value: x, selected: x === 'other' }, SOURCE_NAMES[x] || x)));
+
+  const showUsing = () => {
+    using.replaceChildren(chosenBuyer ? el('p', { class: 'hint' },
+      'Using ' + chosenBuyer.name + (chosenBuyer.address ? '. Saved address: ' + chosenBuyer.address + '. Leave the address blank to use it.' : '. No saved address: type it below.'),
+      ' ', el('button', { type: 'button', class: 'link', onclick: () => { chosenBuyer = null; showUsing(); } }, 'Someone else')) : '');
+  };
+  let timer = null;
+  search.addEventListener('input', () => {
+    clearTimeout(timer);
+    const q = search.value.trim();
+    if (q.length < 2) { results.replaceChildren(); return; }
+    timer = setTimeout(async () => {
+      try {
+        const r = await api('/dash/api/buyers?q=' + encodeURIComponent(q));
+        results.replaceChildren(...(r.buyers.length ? r.buyers.map((b) => el('button', { type: 'button', onclick: () => {
+          chosenBuyer = b;
+          name.value = b.name;
+          results.replaceChildren();
+          search.value = '';
+          showUsing();
+        } }, el('span', { class: 'name' }, b.name), el('div', { class: 'meta' }, (b.address || 'no saved address') + (b.discord ? ' · on Discord' : ''))))
+          : [el('p', { class: 'empty' }, 'No past buyer by that name. Fill it in below.')]));
+      } catch (err) {
+        results.replaceChildren(el('p', { class: 'empty' }, err.message));
+      }
+    }, 250);
+  });
+  showUsing();
+
+  const save = el('button', { class: 'primary', type: 'button' }, 'Add to the label list');
+  save.addEventListener('click', async () => {
+    save.disabled = true;
+    try {
+      const r = await api('/dash/api/label-person', {
+        buyerId: chosenBuyer ? chosenBuyer.id : null, name: name.value, phone: phone.value,
+        street: street.value, suburb: suburb.value, state: state.value, postcode: postcode.value,
+        productId: product.value && product.value !== 'new' ? product.value : null, productName: product.value === 'new' ? newName.value : null,
+        quantity: qty.value, paid: paid.value, method: method.value, source: source.value,
+      });
+      // Saved: the next person starts from an empty form.
+      chosenBuyer = null;
+      toast(r.text);
+      await load();
+    } catch (err) {
+      toast(err.message);
+      save.disabled = false;
+    }
+  });
+
+  return el('div', { class: 'stack', style: 'gap:8px;margin-top:10px' },
+    search, results, using,
+    el('div', { class: 'form-grid' }, name, phone, street, suburb, state, postcode),
+    el('div', { class: 'form-grid' }, el('div', { class: 'full' }, product), newName, qty, paid, method, source),
+    el('div', null, save),
+    el('p', { class: 'hint' }, 'It goes on the list as paid, under Not printed yet, ready for its label. Paid counts as a sale; leave it blank for a giveaway or a replacement.'));
+}
+
+function renderShipping() {
+  if (!ops || !ops.shipping) return null;
+  const t = ops.shipping.totals;
+  const live = new Set([...ops.shipping.printed, ...ops.shipping.unprinted].flatMap((g) => g.parcels.map((p) => p.id)));
+  for (const id of [...picked]) if (!live.has(id)) picked.delete(id);
+  const search = el('input', { type: 'text', class: 'search', placeholder: 'Find a name, product or order', 'aria-label': 'Find a parcel', value: shipFilter });
+  search.addEventListener('input', () => { shipFilter = search.value.trim().toLowerCase(); renderShipList(); });
+  const add = el('details', { class: 'card', open: Boolean(shown.addPerson) }, el('summary', null, 'Add someone to the label list'), personForm());
+  add.addEventListener('toggle', () => { shown.addPerson = add.open; });
+  return el('section', null,
+    el('h2', { id: 'shipping' }, 'Shipping'),
+    el('p', { class: 'meta', style: 'margin:0 0 10px' }, t.parcels
+      ? plural(t.parcels, 'parcel') + ' to ship (' + t.units + ' items)' + (t.oldestDays ? ' · oldest paid ' + plural(t.oldestDays, 'day') + ' ago' : '') + (t.express ? ' · ' + t.express + ' express' : '')
+        + (t.noAddress ? ' · ' + t.noAddress + ' with no address' : '')
+      : 'Nothing waiting to ship.'),
+    add,
+    el('div', { style: 'margin-top:10px' }, search),
+    el('div', { id: 'shiplist', class: 'stack' }, shipListContent()),
+    el('p', { class: 'note' }, 'Tick what went out, then Mark shipped at the bottom. Shipped with a tracking number tells the buyer in their ticket; without one, nobody is told (drop the label PDFs in the shipping channel for that). Make labels downloads the file for your label app.'));
 }
 
 // ---------------------------------------------------------------- stock and health
@@ -829,7 +1070,8 @@ function renderCosts() {
 function render() {
   $('period').value = period;
   $('updated').textContent = 'Updated ' + new Date(stats.generatedAt).toLocaleTimeString('en-AU', { timeZone: 'Australia/Melbourne', hour: 'numeric', minute: '2-digit' });
-  $('app').replaceChildren(...[renderAlerts(), renderKey(), renderStock(), renderHealth(), renderTrend(), renderBuyers(), renderProducts(), renderNights(), renderSpeed(), renderCustomers(), renderServer(), renderMoney(), renderCosts()].filter(Boolean));
+  $('app').replaceChildren(...[renderAlerts(), renderKey(), renderShipping(), renderStock(), renderHealth(), renderTrend(), renderBuyers(), renderProducts(), renderNights(), renderSpeed(), renderCustomers(), renderServer(), renderMoney(), renderCosts()].filter(Boolean));
+  updateShipBar();
 }
 
 $('period').addEventListener('change', (e) => { period = e.target.value; load(); });
@@ -842,7 +1084,7 @@ const PERIOD_OPTIONS = [
 ];
 
 const JUMPS = [
-  ['now', 'Needs you'], ['overview', 'Numbers'], ['stock', 'Stock'], ['health', 'Health'], ['trend', 'Trend'], ['buyers', 'Buyers'], ['products', 'Products'],
+  ['now', 'Needs you'], ['overview', 'Numbers'], ['shipping', 'Shipping'], ['stock', 'Stock'], ['health', 'Health'], ['trend', 'Trend'], ['buyers', 'Buyers'], ['products', 'Products'],
   ['nights', 'Sale nights'], ['speed', 'Speed'], ['customers', 'Channels'], ['server', 'Server'], ['money', 'Money'], ['costs', 'Costs'],
 ];
 
@@ -867,6 +1109,7 @@ export function renderDashboardPage() {
   </header>
   <div id="app" style="display: grid; gap: 26px;"><p class="empty">Loading…</p></div>
 </main>
+<div id="shipbar" role="region" aria-label="Ticked parcels"></div>
 <div id="toast" role="status" aria-live="polite"></div>
 <script>${SCRIPT}</script>
 </body>

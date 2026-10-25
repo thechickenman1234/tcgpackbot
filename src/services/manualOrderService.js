@@ -36,6 +36,7 @@ export function logManualOrder({
   quantity,
   totalCents,
   shippingCents = 0,
+  shippingMethod = null,
   source = 'other',
   discordId = null,
   name = null,
@@ -74,8 +75,8 @@ export function logManualOrder({
     INSERT INTO orders (
       reference_code, buyer_id, product_id, product_name, quantity,
       unit_price_cents, shipping_cents, total_cents, status,
-      claimed_at, paid_at, payment_deadline_at, source
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'paid', ?, ?, ?, ?)
+      claimed_at, paid_at, payment_deadline_at, source, shipping_method
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'paid', ?, ?, ?, ?, ?)
   `).run(
     reference,
     buyerId,
@@ -89,6 +90,7 @@ export function logManualOrder({
     now,
     now,
     source,
+    ['standard', 'express'].includes(shippingMethod) ? shippingMethod : null,
   );
 
   return { ok: true, order: getOrderById(result.lastInsertRowid) };
