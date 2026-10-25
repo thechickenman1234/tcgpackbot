@@ -24,6 +24,12 @@ import { syncWise } from '../services/wiseService.js';
 import { untaggedPayments } from '../services/moneyService.js';
 import { latestOrderSheet } from '../services/orderSheet.js';
 import { getStreamLink, planStream, postLive, setStreamLink } from '../services/streamService.js';
+import { verifySignature } from '../services/zernioService.js';
+import { getOrderByToken, openWholesaleOrders, orderCode } from '../services/wholesaleOrders.js';
+import {
+  handleInstagramDm, postFormAlert, startOrderFromText, startOrderFromWebsite,
+} from '../handlers/wholesaleCards.js';
+import { renderMissingPage, renderQuotePage } from './quotePage.js';
 import {
   addProductToSale,
   cancelScheduledSale,
@@ -118,6 +124,174 @@ function checkPings(message, ping) {
   if (/@(everyone|here)/.test(message) && ping !== true) {
     fail('That message pings @everyone or @here. Send ping: true if that is really wanted.');
   }
+}
+
+/** The body exactly as sent: a signature is checked against these bytes. */
+function readRaw(req, limit = MAX_BODY_BYTES) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > limit) {
+        reject(new OpsError('Request too big.', 413));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
+}
+
+// Zernio retries a delivery it isn't sure arrived; each event runs once.
+const seenZernioEvents = new Set();
+
+/**
+ * Zernio's DM alerts for wholesale orders. Signed with ZERNIO_WEBHOOK_SECRET
+ * rather than the ops secret, and answered at once so Zernio never retries a
+ * DM the bot is still working on.
+ */
+async function handleZernioHook(client, req, res) {
+  const reply = (status, payload) => {
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(payload));
+  };
+  let raw;
+  try {
+    raw = await readRaw(req);
+  } catch {
+    return reply(413, { ok: false });
+  }
+  if (!verifySignature(raw, req.headers['x-zernio-signature'])) return reply(401, { ok: false, error: 'Bad signature.' });
+  let payload;
+  try {
+    payload = JSON.parse(raw);
+  } catch {
+    return reply(400, { ok: false, error: 'Not JSON.' });
+  }
+  reply(200, { ok: true });
+  if (payload.id) {
+    if (seenZernioEvents.has(payload.id)) return undefined;
+    seenZernioEvents.add(payload.id);
+    if (seenZernioEvents.size > 1000) seenZernioEvents.delete(seenZernioEvents.values().next().value);
+  }
+  return handleInstagramDm(client, payload).catch((err) => console.error('Instagram DM failed:', err));
+}
+
+// Send order on the price page: at most this many new orders an hour from one
+// address. Only orders actually made count, so a shop fixing a typo isn't
+// held back, and if Netlify ever stops passing the shopper's address (so every
+// order looks like it came from Netlify) real orders still get through.
+const ORDER_LIMIT_PER_HOUR = 10;
+const orderAttempts = new Map();
+// Netlify can deliver one form submission twice; it alerts once.
+const seenForms = new Set();
+
+function signedWith(secret, raw, signature) {
+  if (!secret || !signature) return false;
+  const expected = Buffer.from(crypto.createHmac('sha256', secret).update(raw).digest('hex'));
+  const given = Buffer.from(String(signature).trim().toLowerCase());
+  return expected.length === given.length && crypto.timingSafeEqual(expected, given);
+}
+
+/**
+ * The website's doors into the bot, all public:
+ *
+ *   GET  /q/<token>               a shop's quote page (tcgpackbot.com/q/... via Netlify)
+ *   POST /public/wholesale-order  Send order on the price page (tcgpackbot.com/api/wholesale-order)
+ *   POST /public/form             the site's forms, passed on by its Netlify function, signed
+ *
+ * Returns true when it answered the request.
+ */
+async function handleWebsite(client, req, res, url) {
+  const path = url.pathname.replace(/\/+$/, '');
+  const json = (status, payload, extra = {}) => {
+    res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...extra });
+    res.end(JSON.stringify(payload));
+  };
+
+  if (req.method === 'GET' && /^\/q\/[^/]+$/.test(path)) {
+    const order = getOrderByToken(path.slice(3));
+    res.writeHead(order ? 200 : 404, {
+      'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow',
+    });
+    res.end(order ? renderQuotePage(order) : renderMissingPage());
+    return true;
+  }
+
+  if (path === '/public/wholesale-order') {
+    const origin = req.headers.origin;
+    const cors = origin && config.siteOrigins.includes(origin) ? { 'Access-Control-Allow-Origin': origin, Vary: 'Origin' } : {};
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, { ...cors, 'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '86400' });
+      res.end();
+      return true;
+    }
+    if (req.method !== 'POST') return false;
+    if (origin && !cors['Access-Control-Allow-Origin']) {
+      json(403, { ok: false, error: 'Orders come through tcgpackbot.com.' });
+      return true;
+    }
+    const from = String(req.headers['x-nf-client-connection-ip'] || clientAddress(req));
+    const recent = (orderAttempts.get(from) || []).filter((t) => Date.now() - t < 3600000);
+    orderAttempts.set(from, recent);
+    if (recent.length >= ORDER_LIMIT_PER_HOUR) {
+      json(429, { ok: false, error: 'Lots of orders from here in the last hour. Message us on Instagram instead.' }, cors);
+      return true;
+    }
+    let body;
+    try {
+      body = JSON.parse((await readRaw(req, 64 * 1024)) || '{}');
+    } catch {
+      json(400, { ok: false, error: 'That order didn\'t come through properly. Try again.' }, cors);
+      return true;
+    }
+    try {
+      const result = await startOrderFromWebsite(client, body);
+      if (result.error) json(400, { ok: false, error: result.error }, cors);
+      else {
+        if (!result.duplicate && !result.ignored) orderAttempts.set(from, [...recent, Date.now()]);
+        json(200, { ok: true, code: result.code, quoteUrl: result.quoteUrl, contactMethod: result.contactMethod }, cors);
+      }
+    } catch (err) {
+      console.error('Website order failed:', err);
+      json(500, { ok: false, error: 'Something went wrong on our end. Tap Copy my order and message it to us instead.' }, cors);
+    }
+    return true;
+  }
+
+  if (req.method === 'POST' && path === '/public/form') {
+    let raw;
+    try {
+      raw = await readRaw(req, 256 * 1024);
+    } catch {
+      json(413, { ok: false });
+      return true;
+    }
+    if (!signedWith(config.formsSecret, raw, req.headers['x-forms-signature'])) {
+      json(401, { ok: false, error: 'Bad signature.' });
+      return true;
+    }
+    let payload;
+    try {
+      payload = JSON.parse(raw);
+    } catch {
+      json(400, { ok: false });
+      return true;
+    }
+    json(200, { ok: true });
+    if (payload.id) {
+      if (seenForms.has(payload.id)) return true;
+      seenForms.add(payload.id);
+      if (seenForms.size > 500) seenForms.delete(seenForms.values().next().value);
+    }
+    postFormAlert(client, { form: payload.form, data: payload.data || {} })
+      .catch((err) => console.error('Website form alert failed:', err));
+    return true;
+  }
+  return false;
 }
 
 function readJson(req) {
@@ -454,6 +628,21 @@ const routes = {
 
   'GET /ops/stream': async () => ({ link: getStreamLink() }),
 
+  /** Open wholesale orders, and where each is up to. */
+  'GET /ops/wholesale': async () => ({
+    orders: openWholesaleOrders().map((o) => ({
+      code: orderCode(o), customer: o.customer_name, instagram: o.customer_username, status: o.status,
+      boxes: o.boxes_cents / 100, shipping: o.shipping_cents == null ? null : o.shipping_cents / 100, lines: o.lines,
+    })),
+  }),
+
+  /** Same as /wholesale new: an order card from what a shop asked for. */
+  'POST /ops/wholesale': async (client, body) => {
+    const result = await startOrderFromText(client, { username: String(body.instagram || '').replace(/^@/, ''), items: String(body.items || ''), name: body.name || null });
+    if (result.error) fail(result.error);
+    return { text: `${orderCode(result.order)} is up for @${result.order.customer_username}.`, url: result.url };
+  },
+
   /** Same as /stream link. */
   'POST /ops/stream/link': async (_client, body) => {
     const result = setStreamLink(body.url);
@@ -613,6 +802,9 @@ export function startOpsServer(client) {
         return res.end(JSON.stringify({ sales: [], now: new Date().toISOString() }));
       }
     }
+
+    if (key === 'POST /hooks/zernio') return handleZernioHook(client, req, res);
+    if (await handleWebsite(client, req, res, url)) return undefined;
 
     // The profit dashboard has its own sign-in (a link from /dashboard, then a cookie).
     if (url.pathname === '/dash' || url.pathname.startsWith('/dash/')) {

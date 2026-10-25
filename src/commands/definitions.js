@@ -694,6 +694,29 @@ export const commandDefinitions = [
     ),
 
   new SlashCommandBuilder()
+    .setName('wholesale')
+    .setDescription('Wholesale orders from Instagram: start one by hand, or list the open ones')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addSubcommand((s) =>
+      s
+        .setName('new')
+        .setDescription('Make an order card from what a shop asked for')
+        .addStringOption((o) =>
+          o.setName('instagram').setDescription('Their Instagram username').setRequired(true).setMaxLength(60),
+        )
+        .addStringOption((o) =>
+          o.setName('items').setDescription('e.g. 10 vstar universe, 20 cn gem vol 5, 5 jp 30th').setRequired(true).setMaxLength(1000),
+        ),
+    )
+    .addSubcommand((s) => s.setName('list').setDescription('Open wholesale orders and where each is up to'))
+    .addSubcommand((s) =>
+      s
+        .setName('howto')
+        .setDescription('The how-to-order message with the price list link, ready to paste anywhere')
+        .addStringOption((o) => o.setName('name').setDescription('Their name, for the greeting').setRequired(false).setMaxLength(60)),
+    ),
+
+  new SlashCommandBuilder()
     .setName('stream')
     .setDescription('TCG Pack Bot shows on Whatnot: plan one, or say we\'re live')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)

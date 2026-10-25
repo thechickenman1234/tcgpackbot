@@ -205,6 +205,30 @@ A **final order sheet** follows about 24 hours later, after the late window has 
 
 ---
 
+## Wholesale orders
+
+Orders come in three ways, and each becomes a card in the wholesale channel: `WHOLESALE_CHANNEL_ID`, else a channel with "wholesale" in its name that @everyone can't see, else the staff log. Cards hold customers' numbers and the supplier's name, so they never go to a public channel.
+
+- **Send order on the price page** (tcgpackbot.com/wholesale-pricing, the link to send anyone). The shop picks boxes, says where to send its quote (Instagram, WhatsApp, email, phone, Messenger or Discord) and taps Send order. The page posts through Netlify's proxy (`/api/wholesale-order`) to the bot, which prices it again from today's sheet (the page's numbers are never trusted) and pings staff. A double tap or a retry within ten minutes is the same order. At most 6 orders an hour from one address; the minimum is 5 boxes per country.
+- **An Instagram DM to @tcgpackbot** with a cart pasted from the page (Copy my order). Zernio sends each DM to `/hooks/zernio` (`ZERNIO_API_KEY` and `ZERNIO_WEBHOOK_SECRET` on Railway).
+- **`/wholesale new instagram: items:`** for anything else, one per line or comma: `10 vstar universe, 20 cn gem vol 6 @ 95, 5 jp 30th`. `jp` or `cn` picks the country; `@ 95` sets the price per box (the Chinese sheet often has none). Lines it can't match are listed on the card; fix them with **Edit boxes**.
+
+Then:
+
+1. **The supplier is asked for shipping by itself** when the order is complete (everything priced, every country over the minimum): the box list goes to `WHOLESALE_SUPPLIER_IG` (default @china_ptcg_shop) with the order number. Only inside Instagram's 24 hours, and at most `WHOLESALE_AUTO_ASKS_PER_DAY` (10) a day, so a form anyone can fill in can't flood the supplier. When it can't, the card says why and **Ask supplier for shipping** does it.
+2. **The supplier's reply** shows on the card with the figure read out of it (yuan at `CNY_PER_AUD`, yen at `JPY_PER_AUD`, Chinese like 运费870元 included). A reply that repeats the order number (W-1001) goes to that order; otherwise to the one asked about last. Check it, then **Set shipping**.
+3. **Send quote.** On Instagram it DMs the shop the boxes, shipping, total, PayID and order number; a quote sent more than 24 hours after their last message goes as a human agent's reply (Instagram allows 7 days, and only because a person tapped it). For a shop that wanted WhatsApp, email and the rest, it hands you one line to paste there: their order page link. The card shows exactly what will go.
+4. **Paid** records each line as a paid wholesale sale (boxes only, at the supplier's cost, so shipping is passed straight through), all or nothing. They stay off the labels list until the stock is in.
+5. **Order from supplier** DMs the supplier the confirmed order.
+
+**The order page**, tcgpackbot.com/q/<token> (Netlify passes `/q/*` through to the bot; `QUOTE_BASE_URL`): the shop's boxes, and once the quote is sent, the shipping, total, PayID and reference with copy buttons. Before that it says the shipping is being quoted, so an unchecked figure is never seen. Then paid, or cancelled.
+
+**Website forms** (contact, wholesale enquiry, host a machine) reach Discord through the site's Netlify function, signed with `FORMS_SECRET` (the same value on Netlify and Railway), at `/public/form`. A wholesale enquiry goes to the wholesale channel with the how-to-order reply ready to paste; the others go to the staff log. The enquiry page's thank-you shows the same steps with the price list button.
+
+`/wholesale howto [name]` gives the how-to-order message with the price list link, to paste anywhere. `/wholesale list` shows the open orders. Claude can do the same through `GET /ops/wholesale` and `POST /ops/wholesale`.
+
+---
+
 ## Whatnot shows (`/stream`)
 
 TCG Pack Bot streams on Whatnot, where people buy inside the show. The Discord's job is sending viewers there. Staff only.

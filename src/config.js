@@ -74,6 +74,30 @@ export const config = {
   wiseOwnName: optional('WISE_OWN_NAME', 'Lachlan Nguyen'),
   // For a payment Wise only gives in yen, the AUD it's roughly worth.
   jpyPerAud: Number(optional('JPY_PER_AUD', '110')),
+  // Wholesale by Instagram DM, through Zernio (the same account that posts).
+  // Without the API key the bot still prices and drafts; it just can't send.
+  zernioApiKey: optional('ZERNIO_API_KEY', ''),
+  zernioWebhookSecret: optional('ZERNIO_WEBHOOK_SECRET', ''),
+  zernioInstagramId: optional('ZERNIO_INSTAGRAM_ID', '6ad61b4273c10b62f030b2b6'),
+  // The supplier's Instagram, so their replies are read as shipping quotes.
+  wholesaleSupplier: optional('WHOLESALE_SUPPLIER_IG', 'china_ptcg_shop').replace(/^@/, '').toLowerCase(),
+  // Where order cards go. Empty: a channel with "wholesale" in its name, else the staff log.
+  wholesaleChannelId: optional('WHOLESALE_CHANNEL_ID', ''),
+  // The supplier price sheets the wholesale price page reads.
+  wholesaleCsvJp: optional('WHOLESALE_CSV_JP', 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRVHKDH5tIqS5gTxghqDS2wKriMGiBpjQnpR6QJl4pPpnBqlT-1wZe29Xwg4Aru7BgpLpf38uWZnZ1p/pub?gid=605423645&single=true&output=csv'),
+  wholesaleCsvCn: optional('WHOLESALE_CSV_CN', 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRVHKDH5tIqS5gTxghqDS2wKriMGiBpjQnpR6QJl4pPpnBqlT-1wZe29Xwg4Aru7BgpLpf38uWZnZ1p/pub?gid=226465806&single=true&output=csv'),
+  // The website's forms reach the bot through its Netlify function, which signs with this.
+  formsSecret: optional('FORMS_SECRET', ''),
+  // Pages allowed to send orders to the bot from a browser. The site normally
+  // goes through Netlify's proxy (/api/wholesale-order), so this is the fallback.
+  siteOrigins: optional('SITE_ORIGINS', 'https://tcgpackbot.com,https://www.tcgpackbot.com')
+    .split(',').map((s) => s.trim()).filter(Boolean),
+  // Where a shop opens its quote: Netlify passes tcgpackbot.com/q/... through to the bot.
+  quoteBaseUrl: optional('QUOTE_BASE_URL', 'https://tcgpackbot.com').replace(/\/+$/, ''),
+  // Supplier asks the bot sends by itself for website orders, per day; past this they wait for a tap.
+  wholesaleAutoAsksPerDay: Number(optional('WHOLESALE_AUTO_ASKS_PER_DAY', '10')),
+  // For a supplier shipping quote in yuan, the AUD it's roughly worth.
+  cnyPerAud: Number(optional('CNY_PER_AUD', '4.7')),
   // Accounts whose orders are tests, never sales (Lachy's own), left out of /profit.
   profitExcludeBuyerIds: optional('PROFIT_EXCLUDE_BUYERS', '315063309550354434')
     .split(',').map((s) => s.trim()).filter(Boolean),

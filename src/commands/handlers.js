@@ -37,6 +37,7 @@ import {
   costAutocomplete, handleCostCommand, handleDashboardCommand, handleOrderSheetCommand, handleProfitCommand,
 } from '../handlers/profitCommands.js';
 import { handleStreamCommand } from '../handlers/streamCommands.js';
+import { handleWholesaleCommand } from '../handlers/wholesaleCards.js';
 import {
   addProductToSale,
   cancelScheduledSale,
@@ -2058,6 +2059,8 @@ export async function handleSlashCommand(interaction) {
       return handleOrderSheetCommand(interaction);
     case 'stream':
       return handleStreamCommand(interaction);
+    case 'wholesale':
+      return handleWholesaleCommand(interaction);
     case 'appeal':
       return handleAppeal(interaction);
     case 'order':

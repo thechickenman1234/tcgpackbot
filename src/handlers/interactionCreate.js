@@ -20,6 +20,7 @@ import { INVOICE_PREFIX, handleInvoiceInteraction } from './invoiceMaker.js';
 import { PAYPROOF_PREFIX, handlePaymentProofButton } from './paymentProof.js';
 import { LABEL_PREFIX, handleLabelModal } from './labelEditor.js';
 import { LABEL_DROP_PREFIX, handleLabelDropInteraction } from './labelDrop.js';
+import { WS_PREFIX, handleWholesaleButton, handleWholesaleModal } from './wholesaleCards.js';
 import {
   QTY_CONTEXT_MENU,
   QTY_PREFIX,
@@ -64,6 +65,16 @@ export async function handleInteractionCreate(interaction) {
       && interaction.customId.startsWith(SHIPPING_PREFIX)
     ) {
       await handleShippingPanel(interaction);
+      return;
+    }
+
+    // Wholesale order cards: their buttons, and the shipping / boxes pop-ups.
+    if (interaction.isModalSubmit() && interaction.customId.startsWith(`${WS_PREFIX}m:`)) {
+      await handleWholesaleModal(interaction);
+      return;
+    }
+    if (interaction.isButton() && interaction.customId.startsWith(WS_PREFIX)) {
+      await handleWholesaleButton(interaction);
       return;
     }
 

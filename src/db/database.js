@@ -372,6 +372,41 @@ export function initDatabase() {
     )
   `);
   db.exec('CREATE INDEX IF NOT EXISTS idx_orders_batch ON orders(label_batch_id)');
+  // Wholesale orders that come in by Instagram DM: priced, sent to the
+  // supplier for a shipping quote, quoted back to the shop, then paid.
+  // lines is JSON: [{ region, name, spec, qty, price }], price in dollars.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS wholesale_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      conversation_id TEXT,
+      customer_username TEXT,
+      customer_name TEXT,
+      business TEXT,
+      contact_method TEXT,
+      contact_value TEXT,
+      notes TEXT,
+      source TEXT NOT NULL DEFAULT 'instagram',
+      quote_token TEXT,
+      lines TEXT NOT NULL,
+      unmatched TEXT,
+      boxes_cents INTEGER NOT NULL DEFAULT 0,
+      shipping_cents INTEGER,
+      shipping_guess_cents INTEGER,
+      supplier_reply TEXT,
+      status TEXT NOT NULL DEFAULT 'new'
+        CHECK (status IN ('new', 'asked', 'quoted', 'paid', 'cancelled')),
+      source_text TEXT,
+      card_channel_id TEXT,
+      card_message_id TEXT,
+      sale_order_ids TEXT,
+      last_error TEXT,
+      created_at TEXT NOT NULL,
+      asked_at TEXT,
+      quoted_at TEXT,
+      paid_at TEXT,
+      supplier_ordered_at TEXT
+    )
+  `);
 
   return db;
 }
