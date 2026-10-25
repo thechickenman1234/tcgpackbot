@@ -27,6 +27,9 @@ import {
 import { pushToSheetInBackground } from '../services/sheetService.js';
 import { postTrackingToThread } from '../services/trackingService.js';
 import { grantBuyerRole } from '../services/buyerRoleService.js';
+import {
+  addCodes, matchCode, readCodesFromFiles, readCodesFromText, sendCodes, shipTicked, skipCode, summaryText, unmatchCode,
+} from '../services/trackingCodes.js';
 import { renderDashboardPage, renderMessagePage } from './page.js';
 
 /**
@@ -47,6 +50,8 @@ const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 const LINK_TTL_MS = 15 * 60000;
 const SESSION_TTL_MS = 30 * 86400000;
 const MAX_BODY_BYTES = 64 * 1024;
+// Label PDFs for a whole post office run, as base64.
+const UPLOAD_MAX_BYTES = 35 * 1024 * 1024;
 const usedLinks = new Map();
 
 const signingKey = () => crypto.createHmac('sha256', config.opsSecret).update('tcgpackbot-dashboard-v1').digest();
@@ -89,14 +94,14 @@ function session(req) {
   return verify(cookies[COOKIE], 'session');
 }
 
-function readJson(req) {
+function readJson(req, limit = MAX_BODY_BYTES) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
     req.on('data', (chunk) => {
       size += chunk.length;
-      if (size > MAX_BODY_BYTES) {
-        reject(new Error('too big'));
+      if (size > limit) {
+        reject(Object.assign(new Error('That\'s too much at once. Upload up to 25 MB of labels at a time.'), { status: 413 }));
         req.destroy();
         return;
       }
@@ -329,14 +334,46 @@ const actions = {
     return { text: result.text };
   },
   'POST /dash/api/ship': async (client, who, body) => {
-    const result = shipOrders(body.ids, { tracking: body.tracking || null });
+    // A code typed on one parcel is Add tracking; ticked parcels send any
+    // uploaded code waiting on them, and the rest go as Mark posted.
+    const result = body.tracking ? shipOrders(body.ids, { tracking: body.tracking }) : await shipTicked(client, body.ids);
     if (result.error) return { status: 400, error: result.error };
-    // With a code it's Add tracking: the buyer is told in their ticket.
-    if (body.tracking) await postTrackingToThread(client, result.shipped[0]);
-    pushToSheetInBackground(result.shipped, 'posted');
+    if (body.tracking) {
+      await postTrackingToThread(client, result.shipped[0]);
+      pushToSheetInBackground(result.shipped, 'posted');
+    }
     const names = result.shipped.map((o) => `${o.quantity}x ${o.product_name} (${o.reference_code})`);
-    audit(client, who, `Marked shipped: ${names.slice(0, 15).join(', ')}${names.length > 15 ? ` and ${names.length - 15} more` : ''}${body.tracking ? ', tracking sent to the buyer' : ''}.`);
+    audit(client, who, `Marked shipped: ${names.slice(0, 15).join(', ')}${names.length > 15 ? ` and ${names.length - 15} more` : ''}${body.tracking ? ', tracking sent to the buyer' : result.told ? `, ${result.told} told their tracking` : ''}.`);
     return { text: result.text };
+  },
+  'POST /dash/api/tracking/upload': async (client, who, body) => {
+    const files = Array.isArray(body.files) ? body.files.slice(0, 20) : [];
+    const entries = [...readCodesFromText(body.text), ...await readCodesFromFiles(files)];
+    if (!entries.length) return { status: 400, error: 'Pick the label files, or paste the codes.' };
+    const result = addCodes(entries);
+    const text = summaryText(result);
+    audit(client, who, `Tracking codes uploaded: ${text}`);
+    return { text };
+  },
+  'POST /dash/api/tracking/match': async (client, who, body) => {
+    const result = matchCode(body.id, body.orderId);
+    return result.error ? { status: 400, error: result.error } : { text: result.text };
+  },
+  'POST /dash/api/tracking/unmatch': async (client, who, body) => {
+    const result = unmatchCode(body.id);
+    return result.error ? { status: 400, error: result.error } : { text: result.text };
+  },
+  'POST /dash/api/tracking/skip': async (client, who, body) => {
+    const result = skipCode(body.id);
+    return result.error ? { status: 400, error: result.error } : { text: result.text };
+  },
+  'POST /dash/api/tracking/send': async (client, who, body) => {
+    const ids = (Array.isArray(body.ids) ? body.ids : []).slice(0, 300);
+    if (!ids.length) return { status: 400, error: 'Nothing to send.' };
+    const r = await sendCodes(client, ids);
+    if (!r.sent.length) return { status: 400, error: 'Those were already sent. Reload the page.' };
+    audit(client, who, `Tracking sent for parcels already marked shipped: ${r.sent.map((o) => o.reference_code).join(', ')}.`);
+    return { text: `Tracking sent for ${r.sent.length}, ${r.told} told in their ticket.${r.noTicket.length ? ` No ticket: ${r.noTicket.slice(0, 4).join(', ')}.` : ''}` };
   },
   'POST /dash/api/unship': async (client, who, body) => {
     const result = unshipFromBoard(body.id);
@@ -414,11 +451,12 @@ export async function handleDashboard(client, req, res, url) {
     if (!action) return sendJson(res, 404, { ok: false, error: 'Nothing here.' });
     // A form on another website can't add this header, so it can't make changes.
     if (req.headers['x-dash'] !== '1') return sendJson(res, 403, { ok: false, error: 'Refused.' });
-    const result = await action(client, who.u, await readJson(req));
+    const result = await action(client, who.u, await readJson(req, path === '/dash/api/tracking/upload' ? UPLOAD_MAX_BYTES : MAX_BODY_BYTES));
     if (result.error) return sendJson(res, result.status || 400, { ok: false, error: result.error });
     statsCache.clear();
     return sendJson(res, 200, { ok: true, ...result });
   } catch (err) {
+    if (err.status === 413) return sendJson(res, 413, { ok: false, error: err.message });
     console.error(`Dashboard ${req.method} ${path} failed:`, err);
     return sendJson(res, 500, { ok: false, error: 'Something went wrong. Try again.' });
   }

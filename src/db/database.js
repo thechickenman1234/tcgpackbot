@@ -427,6 +427,23 @@ export function initDatabase() {
       created_at TEXT NOT NULL
     )
   `);
+  // Tracking codes uploaded on the dashboard (trackingCodes.js), matched to
+  // orders and held until staff tick the parcel as shipped; only then is the
+  // buyer told. order_id stays null until a code is matched.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tracking_codes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tracking_code TEXT NOT NULL UNIQUE,
+      order_id INTEGER,
+      quantity INTEGER,
+      label_name TEXT,
+      label_ref TEXT,
+      source TEXT,
+      status TEXT NOT NULL DEFAULT 'waiting' CHECK (status IN ('waiting', 'sent', 'skipped')),
+      created_at TEXT NOT NULL,
+      sent_at TEXT
+    )
+  `);
 
   return db;
 }

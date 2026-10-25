@@ -63,8 +63,8 @@ nav.jump a { flex: 0 0 auto; font-size: 13px; padding: 5px 10px; border-radius: 
 .meta { color: var(--soft); font-size: 14px; }
 .insight { font-size: 14px; margin: 10px 0 0; }
 .insight b { font-variant-numeric: tabular-nums; }
-input, select, button { font: inherit; }
-input[type=text], input[type=date], select {
+input, select, button, textarea { font: inherit; }
+input[type=text], input[type=date], select, textarea {
   width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line);
   background: var(--card); color: var(--ink); min-width: 0;
 }
@@ -142,6 +142,8 @@ let period = 'month';
 const picked = new Set();
 let shipFilter = '';
 let chosenBuyer = null;
+// Parcels with an uploaded tracking code waiting on them.
+let readyIds = new Set();
 let buyerView = 'period';
 const shown = {};
 
@@ -335,8 +337,9 @@ function updateShipBar() {
   if (!picked.size) { bar.classList.remove('show'); bar.replaceChildren(); return; }
   const save = el('button', { class: 'primary', type: 'button' }, 'Mark ' + picked.size + ' shipped');
   save.addEventListener('click', () => shipPicked(save));
+  const told = [...picked].filter((id) => readyIds.has(id)).length;
   bar.replaceChildren(
-    el('span', { class: 'grow' }, plural(picked.size, 'parcel') + ' ticked'),
+    el('span', { class: 'grow' }, el('div', null, picked.size + ' ticked'), told ? el('div', { class: 'meta' }, told + ' get tracking') : null),
     el('button', { type: 'button', class: 'link', onclick: () => { picked.clear(); renderShipList(); updateShipBar(); } }, 'Clear'),
     save);
   bar.classList.add('show');
@@ -388,6 +391,8 @@ function parcelRow(p) {
   box.addEventListener('change', () => { if (box.checked) picked.add(p.id); else picked.delete(p.id); updateShipBar(); });
   const slot = el('div', { class: 'slot' });
   const tags = [
+    p.code ? el('span', { class: 'chip real' }, 'Tracking ready ' + p.code.short) : null,
+    p.code ? el('button', { type: 'button', class: 'link', style: 'font-size:13px;padding:0 4px', onclick: (e) => { e.preventDefault(); post('/dash/api/tracking/unmatch', { id: p.code.id }, [e.target]); } }, 'Wrong parcel') : null,
     p.express ? el('span', { class: 'chip est' }, 'Express') : null,
     p.sent ? el('span', { class: 'chip' }, p.sent + ' sent already') : null,
     p.address ? null : el('span', { class: 'chip bad' }, 'No address'),
@@ -419,9 +424,41 @@ function shipGroup(key, title, sub, parcels, action) {
     shipFilter ? null : more(key, visible.length, 8));
 }
 
+function codeMatchCard() {
+  const list = ops.shipping.codes.unmatched.filter((u) => !shipFilter || ((u.name || '') + ' ' + u.code + ' ' + (u.ref || '')).toLowerCase().includes(shipFilter));
+  if (!list.length) return null;
+  return el('div', { class: 'card' },
+    el('div', { class: 'head' }, el('span', { class: 'name' }, 'Codes to match'), el('span', { class: 'num' }, String(list.length))),
+    el('div', { class: 'meta' }, 'Not matched for sure. Pick the order each one is for, or remove it.'),
+    el('div', { class: 'list parcels', style: 'margin-top:6px' }, list.map((u) => {
+      const sel = el('select', { 'aria-label': 'Order for ' + u.code },
+        el('option', { value: '' }, u.options.length ? (u.likely > 1 ? 'Pick one of ' + u.likely + ' orders' : 'Pick the order') : 'No waiting orders'),
+        u.options.map((o) => el('option', { value: String(o.id) }, o.text)));
+      const go = el('button', { type: 'button', class: 'primary' }, 'Match');
+      go.addEventListener('click', () => post('/dash/api/tracking/match', { id: u.id, orderId: sel.value }, [go]));
+      return el('div', { class: 'parcel' }, el('div', { class: 'slot' },
+        el('div', null, el('span', { class: 'name' }, u.name || 'No name read'), el('span', { class: 'meta' }, ' · ' + u.code + (u.ref ? ' · ' + u.ref : ''))),
+        el('div', { class: 'edit', style: 'grid-template-columns:minmax(0,1fr) auto auto' }, sel, go,
+          el('button', { type: 'button', class: 'link', onclick: (e) => post('/dash/api/tracking/skip', { id: u.id }, [e.target]) }, 'Remove'))));
+    })));
+}
+
+function shippedCodesCard() {
+  const list = ops.shipping.codes.forShipped.filter((x) => !shipFilter || (x.buyer + ' ' + x.code + ' ' + x.ref + ' ' + x.what).toLowerCase().includes(shipFilter));
+  if (!list.length) return null;
+  return el('div', { class: 'card' },
+    el('div', { class: 'head' }, el('span', { class: 'name' }, 'Tracking for parcels already marked shipped'), el('span', { class: 'num' }, String(list.length))),
+    el('div', { class: 'meta' }, 'These were marked shipped before their code came in. Send gives each buyer their tracking in their ticket.'),
+    el('div', { class: 'row', style: 'margin:6px 0 2px' },
+      el('button', { type: 'button', class: 'primary', onclick: (e) => post('/dash/api/tracking/send', { ids: list.map((x) => x.id) }, [e.target]) }, 'Send all ' + list.length)),
+    el('div', { class: 'list parcels' }, list.map((x) => el('div', { class: 'parcel' },
+      el('div', null, el('span', { class: 'name' }, x.buyer), el('div', { class: 'meta' }, x.what + ' · ' + x.ref + ' · ' + x.code)),
+      el('button', { type: 'button', class: 'link', onclick: (e) => post('/dash/api/tracking/send', { ids: [x.id] }, [e.target]) }, 'Send')))));
+}
+
 function shipListContent() {
   const s = ops.shipping;
-  const out = [];
+  const out = [codeMatchCard(), shippedCodesCard()];
   for (const g of s.printed) {
     const again = el('button', { type: 'button', onclick: (e) => downloadLabels({ batchId: g.batchId }, e.target) }, 'Labels again');
     out.push(shipGroup('b' + g.batchId, g.title, 'Labels made ' + day(g.printedAt) + ' (batch ' + g.batchId + ')', g.parcels, again));
@@ -530,8 +567,17 @@ function personForm() {
 function renderShipping() {
   if (!ops || !ops.shipping) return null;
   const t = ops.shipping.totals;
-  const live = new Set([...ops.shipping.printed, ...ops.shipping.unprinted].flatMap((g) => g.parcels.map((p) => p.id)));
+  const parcels = [...ops.shipping.printed, ...ops.shipping.unprinted].flatMap((g) => g.parcels);
+  const live = new Set(parcels.map((p) => p.id));
   for (const id of [...picked]) if (!live.has(id)) picked.delete(id);
+  readyIds = new Set(parcels.filter((p) => p.code).map((p) => p.id));
+  const tickReady = readyIds.size ? el('button', { type: 'button', onclick: () => {
+    readyIds.forEach((id) => picked.add(id));
+    renderShipList();
+    updateShipBar();
+  } }, 'Tick all with tracking ready (' + readyIds.size + ')') : null;
+  const upload = el('details', { class: 'card', open: Boolean(shown.upload) }, el('summary', null, 'Upload tracking codes'), uploadForm());
+  upload.addEventListener('toggle', () => { shown.upload = upload.open; });
   const search = el('input', { type: 'text', class: 'search', placeholder: 'Find a name, product or order', 'aria-label': 'Find a parcel', value: shipFilter });
   search.addEventListener('input', () => { shipFilter = search.value.trim().toLowerCase(); renderShipList(); });
   const add = el('details', { class: 'card', open: Boolean(shown.addPerson) }, el('summary', null, 'Add someone to the label list'), personForm());
@@ -542,10 +588,39 @@ function renderShipping() {
       ? plural(t.parcels, 'parcel') + ' to ship (' + t.units + ' items)' + (t.oldestDays ? ' · oldest paid ' + plural(t.oldestDays, 'day') + ' ago' : '') + (t.express ? ' · ' + t.express + ' express' : '')
         + (t.noAddress ? ' · ' + t.noAddress + ' with no address' : '')
       : 'Nothing waiting to ship.'),
-    add,
+    el('div', { class: 'stack', style: 'gap:10px' }, upload, add),
     el('div', { style: 'margin-top:10px' }, search),
+    tickReady ? el('div', { class: 'row', style: 'margin:0 0 10px' }, tickReady, el('span', { class: 'meta' }, plural(readyIds.size, 'parcel') + ' with a code waiting')) : null,
     el('div', { id: 'shiplist', class: 'stack' }, shipListContent()),
-    el('p', { class: 'note' }, 'Tick what went out, then Mark shipped at the bottom. Shipped with a tracking number tells the buyer in their ticket; without one, nobody is told (drop the label PDFs in the shipping channel for that). Make labels downloads the file for your label app.'));
+    el('p', { class: 'note' }, 'Tick what went out, then Mark shipped at the bottom. A parcel with tracking ready (or a code typed under Tracking) tells the buyer in their ticket; one without, nobody is told. Make labels downloads the file for your label app.'));
+}
+
+function uploadForm() {
+  const files = el('input', { type: 'file', multiple: true, accept: '.pdf,.png,.jpg,.jpeg,.csv,.txt', 'aria-label': 'Label files' });
+  const paste = el('textarea', { rows: '4', placeholder: 'Or paste: one parcel per line, name then code', 'aria-label': 'Paste tracking codes' });
+  const go = el('button', { class: 'primary', type: 'button' }, 'Read the codes');
+  go.addEventListener('click', async () => {
+    const was = go.textContent;
+    go.disabled = true;
+    go.textContent = 'Reading… a big PDF takes a minute';
+    try {
+      const list = await Promise.all([...files.files].map((f) => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve({ name: f.name, data: String(reader.result).split(',')[1] || '' });
+        reader.onerror = () => reject(new Error('Could not open ' + f.name));
+        reader.readAsDataURL(f);
+      })));
+      const r = await api('/dash/api/tracking/upload', { text: paste.value, files: list });
+      toast(r.text);
+      await load();
+    } catch (err) {
+      toast(err.message);
+      go.disabled = false;
+      go.textContent = was;
+    }
+  });
+  return el('div', { class: 'stack', style: 'gap:8px;margin-top:10px' }, files, paste, el('div', null, go),
+    el('p', { class: 'hint' }, 'Label Pro PDFs work: each label is read for its tracking number, name and order number, and matched to its parcel. Nothing is sent yet. When the parcel goes out, tick it and Mark shipped: only then does the buyer get their tracking in their ticket.'));
 }
 
 // ---------------------------------------------------------------- stock and health

@@ -7,6 +7,7 @@ import { SOURCES, logManualOrder, syntheticBuyerId } from './manualOrderService.
 import { markShipped, unshipOrder } from './orderService.js';
 import { createBatch, getBatch, markPosted, openOrdersInBatch, planBatch, setLabelsBatch } from './shippingService.js';
 import { labelRowsByBuyer, labelRowsToCsv } from './sheetService.js';
+import { codesForBoard } from './trackingCodes.js';
 
 /**
  * Shipping on the dashboard: everything paid and not posted, grouped the way
@@ -16,7 +17,8 @@ import { labelRowsByBuyer, labelRowsToCsv } from './sheetService.js';
  * It goes through the same functions as the shipping panel and /logsale, so
  * a parcel ticked here is the same as one ticked in Discord: shipped with no
  * code tells nobody (like Mark posted), and shipped with a tracking number
- * tells the buyer in their ticket (like Add tracking).
+ * tells the buyer in their ticket (like Add tracking). Codes uploaded in
+ * bulk wait on their parcels (trackingCodes.js) until the parcel is ticked.
  */
 
 const DAY = 86400000;
@@ -43,6 +45,7 @@ export function shippingBoard({ now = new Date() } = {}) {
     WHERE o.status = 'paid'
     ORDER BY COALESCE(o.paid_at, o.claimed_at), o.id
   `).all();
+  const codes = codesForBoard();
 
   const parcel = (o) => {
     const paidAt = o.paid_at || o.claimed_at;
@@ -58,6 +61,8 @@ export function shippingBoard({ now = new Date() } = {}) {
       sent: o.units_sent,
       paidAt,
       days: Math.max(0, Math.floor((now.getTime() - Date.parse(paidAt)) / DAY)),
+      // An uploaded tracking code waiting for this parcel to be ticked.
+      code: codes.byOrder.get(o.id) || null,
     };
   };
 
@@ -102,6 +107,7 @@ export function shippingBoard({ now = new Date() } = {}) {
       .map(({ names, ...g }) => ({ ...g, title: [...names].join(' + ') })),
     unprinted: [...unprinted.values()],
     shipped,
+    codes: { waiting: codes.waiting, ready: codes.byOrder.size, unmatched: codes.unmatched, forShipped: codes.forShipped },
     states: STATES,
     sources: SOURCES,
   };
