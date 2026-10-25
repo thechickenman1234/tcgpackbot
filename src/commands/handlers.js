@@ -90,6 +90,8 @@ import {
   getSyncableOrders,
   unshipOrder,
   markShipped,
+  listOrdersAtRiskOfBan,
+  countHeldOrders,
   setTrackingCode,
 } from '../services/orderService.js';
 import {
@@ -625,7 +627,11 @@ async function handleUnban(interaction) {
   }
 }
 
-/** /banned: who can't claim right now, why and since when; optionally bans lifted lately. */
+/**
+ * /banned: who can't claim right now, why and since when; who the bot will
+ * ban next (unpaid claims with no payment screenshot, soonest deadline
+ * first); optionally bans lifted lately.
+ */
 async function handleBanned(interaction) {
   if (!isStaff(interaction.member)) {
     await interaction.reply({ content: 'Staff only.', ephemeral: true });
@@ -633,16 +639,26 @@ async function handleBanned(interaction) {
   }
 
   const banned = listBannedBuyers();
+  const atRisk = listOrdersAtRiskOfBan();
+  const held = countHeldOrders();
   const lifted = interaction.options.getBoolean('lifted') ? listRecentUnbans(30) : null;
+  const when = (iso) => `<t:${Math.floor(new Date(iso).getTime() / 1000)}:R>`;
   const day = (iso) => (iso ? `<t:${Math.floor(new Date(iso).getTime() / 1000)}:d>` : 'date unknown');
   const by = (staffId) => (staffId ? `by <@${staffId}>` : 'by the bot');
   const who = (r) => `<@${r.discord_id}>${r.name ? ` (${r.name})` : ''}`;
 
   const lines = banned.map((r) => `• ${who(r)} · ${day(r.banned_at)} · ${r.reason || 'no reason given'} · ${by(r.staff_id)}`
     + (r.appeals ? ' · 📨 appealed' : ''));
+  const riskLines = atRisk.map((o) => {
+    const late = new Date(o.payment_deadline_at).getTime() <= Date.now();
+    return `• <@${o.buyer_id}>${o.buyer_name ? ` (${o.buyer_name})` : ''} · \`${o.reference_code}\` ${o.quantity}x ${o.product_name} `
+      + `${formatAud(o.total_cents)} · ${late ? 'deadline passed, being cancelled now' : `banned ${when(o.payment_deadline_at)}`}`
+      + (o.reminder_sent_at ? ' · reminded' : '');
+  });
   const liftedLines = (lifted || []).map((r) => `• ${who(r)} · lifted ${day(r.unbanned_at)} · ${r.reason || 'no reason given'} · ${by(r.staff_id)}`);
 
-  // An embed holds about 4,000 characters; past that the full list goes in a text file.
+  // An embed holds about 4,000 characters and a message 6,000 in all; past
+  // that the full lists go in a text file.
   const fit = (list, room) => {
     const out = [];
     let used = 0;
@@ -658,15 +674,24 @@ async function handleBanned(interaction) {
   };
 
   const embeds = [];
-  const main = fit(lines, 3900);
+  const main = fit(lines, lifted ? 2300 : 2900);
   embeds.push(new EmbedBuilder()
     .setTitle(`🚫 Banned from claims: ${banned.length}`)
     .setColor(0xc0392b)
     .setDescription(main.text || 'Nobody is banned right now.')
     .setFooter({ text: 'Lift a ban with /unban. A buyer\'s full history: /appeal history.' }));
-  let cut = main.cut;
+  const risk = fit(riskLines, lifted ? 1900 : 2500);
+  embeds.push(new EmbedBuilder()
+    .setTitle(`⏳ Could be banned next: ${atRisk.length}`)
+    .setColor(0xe67e22)
+    .setDescription(risk.text || 'Nobody. Every claim is paid or has a payment screenshot.')
+    .setFooter({
+      text: `${held ? `${held} more posted a payment screenshot, so they're safe until you press Paid or Not paid. ` : ''}`
+        + 'Paid? /paid in their ticket stops the ban.',
+    }));
+  let cut = main.cut || risk.cut;
   if (lifted) {
-    const extra = fit(liftedLines, 1800);
+    const extra = fit(liftedLines, 1000);
     cut = cut || extra.cut;
     embeds.push(new EmbedBuilder()
       .setTitle(`✅ Bans lifted in the last 30 days: ${lifted.length}`)
@@ -680,6 +705,8 @@ async function handleBanned(interaction) {
     const text = [
       `Banned from claims (${banned.length})`,
       ...banned.map((r) => `${plain(r)} | ${r.banned_at?.slice(0, 10) || '?'} | ${r.reason || ''} | ${r.staff_id ? `staff ${r.staff_id}` : 'bot'}${r.appeals ? ' | appealed' : ''}`),
+      '', `Could be banned next (${atRisk.length})`,
+      ...atRisk.map((o) => `${o.buyer_name || '(no name)'} [${o.buyer_id}] | ${o.reference_code} | ${o.quantity}x ${o.product_name} | deadline ${o.payment_deadline_at}`),
       ...(lifted ? ['', `Lifted in the last 30 days (${lifted.length})`,
         ...lifted.map((r) => `${plain(r)} | ${r.unbanned_at.slice(0, 10)} | ${r.reason || ''}`)] : []),
     ].join('\n');

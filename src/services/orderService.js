@@ -338,6 +338,23 @@ export function getExpiredUnpaidOrders() {
 }
 
 /**
+ * Unpaid claims with no payment screenshot, soonest deadline first: the
+ * orders the deadline job will cancel, and their buyers it will ban, next.
+ */
+export function listOrdersAtRiskOfBan() {
+  return getDb().prepare(`
+    SELECT o.*, b.name AS buyer_name FROM orders o LEFT JOIN buyers b ON b.discord_id = o.buyer_id
+    WHERE o.status = 'pending' AND o.proof_at IS NULL
+    ORDER BY o.payment_deadline_at ASC
+  `).all();
+}
+
+/** Unpaid claims held by a payment screenshot: safe from a ban until staff check them. */
+export function countHeldOrders() {
+  return getDb().prepare("SELECT COUNT(*) AS n FROM orders WHERE status = 'pending' AND proof_at IS NOT NULL").get().n;
+}
+
+/**
  * The buyer posted a payment screenshot: hold the order until staff check it.
  * Returns false when it is not pending or an earlier screenshot is already held.
  */

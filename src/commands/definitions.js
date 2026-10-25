@@ -223,7 +223,7 @@ export const commandDefinitions = [
 
   new SlashCommandBuilder()
     .setName('banned')
-    .setDescription('Staff: see everyone banned from claims, why, and when')
+    .setDescription('Staff: who is banned from claims, and who will be banned next if they do not pay')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addBooleanOption((o) =>
       o.setName('lifted').setDescription('Also show bans lifted in the last 30 days').setRequired(false),
