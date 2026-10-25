@@ -18,6 +18,9 @@ import { ZONE } from '../services/scheduleService.js';
 import { statsFor } from '../services/statsService.js';
 import { addWholesaleSale, moneySummary, tagPayment, untagPayment } from '../services/moneyService.js';
 import { syncWise } from '../services/wiseService.js';
+import { batchView, getStockBatch, setStep, stockBoard } from '../services/stockTracker.js';
+import { healthReport } from '../services/healthService.js';
+import { refreshStockCard } from '../handlers/stockCard.js';
 import { renderDashboardPage, renderMessagePage } from './page.js';
 
 /**
@@ -308,6 +311,17 @@ const actions = {
     audit(client, who, result.text);
     return { text: result.text };
   },
+  'POST /dash/api/stock/step': async (client, who, body) => {
+    const done = body.done !== false;
+    const result = setStep(Number(body.id), String(body.step || ''), done, { note: body.note == null ? null : String(body.note) });
+    if (result.error) return { status: 400, error: result.error };
+    const batch = getStockBatch(Number(body.id));
+    const v = batchView(batch);
+    audit(client, who, `Stock, ${v.title}: ${result.text}`);
+    // Keep the card in the staff log the same as the dashboard.
+    await refreshStockCard(client, v);
+    return { text: result.text };
+  },
   'POST /dash/api/expense/delete': async (client, who, body) => {
     if (!deleteExpense(Number(body.id))) return { status: 404, error: 'Already gone. Reload the page.' };
     audit(client, who, `Expense #${Number(body.id)} deleted.`);
@@ -349,6 +363,9 @@ export async function handleDashboard(client, req, res, url) {
     }
     if (req.method === 'GET' && path === '/dash/api/data') {
       return sendJson(res, 200, { ok: true, ...dashboardData(url.searchParams.get('period') || 'month') });
+    }
+    if (req.method === 'GET' && path === '/dash/api/ops') {
+      return sendJson(res, 200, { ok: true, stock: stockBoard(), health: await healthReport() });
     }
 
     const action = actions[`${req.method} ${path}`];

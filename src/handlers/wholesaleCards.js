@@ -11,6 +11,7 @@ import {
 import { config } from '../config.js';
 import { isStaff } from '../utils/permissions.js';
 import { getMeta, setMeta } from '../services/metaService.js';
+import { noteOk } from '../services/healthService.js';
 import { ZONE } from '../services/scheduleService.js';
 import { loadPrices, matchTyped, MIN_BOXES, parseCartText, REGION_NAMES } from '../services/wholesalePrices.js';
 import { findConversation, sendDm, zernioReady } from '../services/zernioService.js';
@@ -464,6 +465,7 @@ export async function postFormAlert(client, { form, data = {} }) {
     embeds,
     allowedMentions: { roles: config.staffRoleId ? [config.staffRoleId] : [] },
   });
+  noteOk('forms');
 }
 
 function supplierNote(guess) {

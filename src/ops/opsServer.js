@@ -25,6 +25,10 @@ import { untaggedPayments } from '../services/moneyService.js';
 import { latestOrderSheet } from '../services/orderSheet.js';
 import { getStreamLink, planStream, postLive, setStreamLink } from '../services/streamService.js';
 import { checkChat, verifySignature } from '../services/zernioService.js';
+import { batchView, getStockBatch, setStep, stockBoard } from '../services/stockTracker.js';
+import { BACKUP_FORM_NAME, healthReport } from '../services/healthService.js';
+import { refreshStockCard } from '../handlers/stockCard.js';
+import { buildBrief } from '../jobs/dailyBrief.js';
 import { getOrderByToken, openWholesaleOrders, orderCode } from '../services/wholesaleOrders.js';
 import {
   handleInstagramDm, postFormAlert, startOrderFromText, startOrderFromWebsite,
@@ -650,6 +654,39 @@ const routes = {
       : `The key works, but ${supplier} hasn't messaged in the last 24 hours, so the bot can't message them until they do.`;
     return { ...check, text };
   },
+
+  /** Each sale night's stock and where it's up to, as the dashboard shows it. */
+  'GET /ops/stock': async () => stockBoard(),
+
+  /** Ticks (or with done: false, unticks) ordered, paid, onway or arrived on one night's stock. */
+  'POST /ops/stock/step': async (client, body) => {
+    const result = setStep(Number(body.id), String(body.step || ''), body.done !== false, { note: body.note == null ? null : String(body.note) });
+    if (result.error) fail(result.error);
+    const v = batchView(getStockBatch(Number(body.id)));
+    await refreshStockCard(client, v);
+    return { text: `${v.title}: ${result.text}`, stage: v.stage };
+  },
+
+  /** Every part's health, checked now. */
+  'GET /ops/checks': async () => ({ checks: await healthReport({ fresh: true }) }),
+
+  /**
+   * The website's backup path: a webhook in the staff log that the site's
+   * forms function posts to when it can't reach the bot. Made once, then the
+   * same one is handed back. Its link goes on Netlify as DISCORD_WEBHOOK_URL.
+   */
+  'POST /ops/forms-backup': async (client) => {
+    const channel = await client.channels.fetch(config.staffLogChannelId);
+    const hooks = await channel.fetchWebhooks()
+      .catch((err) => fail(`Can't read the staff log's webhooks (the bot needs Manage Webhooks there): ${err.message}`, 502));
+    const hook = hooks.find((h) => h.name === BACKUP_FORM_NAME && h.owner?.id === client.user.id)
+      || await channel.createWebhook({ name: BACKUP_FORM_NAME, reason: 'Backup path for the website forms' })
+        .catch((err) => fail(`Couldn't make the webhook: ${err.message}`, 502));
+    return { text: `The "${hook.name}" webhook is ready in #${channel.name}.`, url: hook.url };
+  },
+
+  /** The morning brief as it would go out now, without posting it. */
+  'GET /ops/brief': async (client) => buildBrief(client),
 
   /** Same as /wholesale new: an order card from what a shop asked for. */
   'POST /ops/wholesale': async (client, body) => {

@@ -4,6 +4,8 @@ import { getMeta, setMeta } from './metaService.js';
 import { getProductById } from './productService.js';
 import { money } from './profitService.js';
 import { logToStaff } from './staffLog.js';
+import { createStockBatch } from './stockTracker.js';
+import { postStockCard } from '../handlers/stockCard.js';
 
 /**
  * The supplier order, worked out the moment claims close, so nobody counts
@@ -17,6 +19,7 @@ import { logToStaff } from './staffLog.js';
  * Posted in the staff log when a sale ends, and again once the late window
  * and the payment deadline have passed, by when unpaid claims have either
  * paid or been cancelled. /ordersheet shows the latest one, live, any time.
+ * The first one also starts the night's stock tracker, with its card.
  *
  * The nights are kept in bot_meta, not a table of their own: only the last
  * few matter, and only until their final count has gone out.
@@ -212,6 +215,8 @@ export async function postOrderSheet(client, { productIds, sinceIso = null, now 
   sheets.push(entry);
   saveSheets(sheets);
   await send(client, entry, false);
+  const batch = createStockBatch({ productIds: ids, sinceIso: entry.sinceIso, closedAt: entry.closedAt });
+  if (batch) await postStockCard(client, batch);
   return entry;
 }
 

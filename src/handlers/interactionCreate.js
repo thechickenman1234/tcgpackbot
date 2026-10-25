@@ -21,6 +21,7 @@ import { PAYPROOF_PREFIX, handlePaymentProofButton } from './paymentProof.js';
 import { LABEL_PREFIX, handleLabelModal } from './labelEditor.js';
 import { LABEL_DROP_PREFIX, handleLabelDropInteraction } from './labelDrop.js';
 import { WS_PREFIX, handleWholesaleButton, handleWholesaleModal } from './wholesaleCards.js';
+import { STOCK_PREFIX, handleStockInteraction } from './stockCard.js';
 import {
   QTY_CONTEXT_MENU,
   QTY_PREFIX,
@@ -75,6 +76,12 @@ export async function handleInteractionCreate(interaction) {
     }
     if (interaction.isButton() && interaction.customId.startsWith(WS_PREFIX)) {
       await handleWholesaleButton(interaction);
+      return;
+    }
+
+    // Stock cards in the staff log: the step buttons and the "On its way" pop-up.
+    if ((interaction.isButton() || interaction.isModalSubmit()) && interaction.customId.startsWith(STOCK_PREFIX)) {
+      await handleStockInteraction(interaction);
       return;
     }
 

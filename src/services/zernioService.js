@@ -107,6 +107,21 @@ export async function checkChat(username) {
   return { key: true, chat: true, conversationId: convo.id, lastFromThem, canMessageUntil: until, open: Boolean(until) && Date.parse(until) > Date.now() };
 }
 
+/** Scheduled posts (Instagram, TikTok) by status: scheduled, failed, partial. Reads only. */
+export async function listPosts(status, limit = 50) {
+  if (!zernioReady()) return [];
+  const res = await call('GET', `/posts?status=${encodeURIComponent(status)}&limit=${limit}`);
+  return (res?.posts || []).map((p) => ({
+    id: p._id,
+    status: p.status,
+    caption: String(p.content || '').split('\n')[0].slice(0, 80),
+    at: p.scheduledFor || p.updatedAt || p.createdAt || null,
+    platforms: (p.platforms || []).map((x) => ({
+      name: x.platform || x.platformName || 'post', status: x.status || null, error: x.errorMessage || null,
+    })),
+  }));
+}
+
 /** Zernio signs each delivery: lowercase hex HMAC-SHA256 of the raw body. */
 export function verifySignature(rawBody, signature) {
   if (!config.zernioWebhookSecret || !signature) return false;

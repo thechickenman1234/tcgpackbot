@@ -1,7 +1,8 @@
 /**
  * The dashboard's HTML: one self-contained page (styles and script inline,
  * nothing loaded from elsewhere) that reads /dash/api/data (costs, profit,
- * expenses) and /dash/api/stats (everything else) and posts changes back.
+ * expenses), /dash/api/ops (stock tracker, health) and /dash/api/stats
+ * (everything else) and posts changes back.
  * Built for a phone first: the alerts, key numbers and trend come first so
  * one look says how things are going, and the detail sits below. Every name
  * from the database goes in with textContent, never as HTML.
@@ -104,12 +105,24 @@ svg.chart { width: 100%; height: auto; display: block; }
 #toast { position: fixed; left: 16px; right: 16px; bottom: 16px; max-width: 520px; margin: 0 auto; padding: 12px 14px; border-radius: 12px; background: var(--ink); color: var(--bg); font-size: 15px; opacity: 0; transform: translateY(10px); transition: .2s; pointer-events: none; z-index: 10; }
 #toast.show { opacity: 1; transform: none; }
 .empty { color: var(--soft); font-size: 14px; }
+.card.bad { border-color: var(--bad); }
+.steps { display: grid; gap: 4px; margin: 10px 0 4px; font-size: 14px; }
+.steps .s { display: flex; gap: 8px; align-items: center; min-height: 30px; }
+.steps .s.now { font-weight: 650; }
+.steps .s.later { color: var(--soft); }
+.steps .s button.link { padding: 2px 6px; font-size: 14px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: 0 0 auto; background: var(--line); }
+.dot.ok { background: var(--good); } .dot.warn { background: var(--warn); } .dot.bad { background: var(--bad); }
+.stuck { font-size: 14px; font-weight: 650; margin: 6px 0 0; }
+.stuck.bad { color: var(--bad); } .stuck.warn { color: var(--warn); }
+.indent { margin-left: 18px; }
 `;
 
 const SCRIPT = `
 const $ = (id) => document.getElementById(id);
 let state = null;
 let stats = null;
+let ops = null;
 let period = 'month';
 let buyerView = 'period';
 const shown = {};
@@ -163,9 +176,11 @@ async function api(path, body) {
 async function load() {
   try {
     const q = '?period=' + encodeURIComponent(period);
-    const [d, s] = await Promise.all([api('/dash/api/data' + q), api('/dash/api/stats' + q)]);
+    // Stock and health are extras: the rest of the page still loads if they can't.
+    const [d, s, o] = await Promise.all([api('/dash/api/data' + q), api('/dash/api/stats' + q), api('/dash/api/ops').catch(() => null)]);
     state = d;
     stats = s;
+    ops = o;
     render();
   } catch (err) {
     $('app').replaceChildren(el('p', { class: 'empty' }, err.message));
@@ -212,6 +227,10 @@ function renderAlerts() {
   if (n.partOrders) a(plural(n.partOrders, 'part order') + ' waiting for the rest', '#speed');
   if (n.unpaid) a(plural(n.unpaid, 'unpaid claim') + ' (' + dollars(n.unpaidValue) + ')', '#speed', true);
   if (n.estimates) a(plural(n.estimates, 'product') + ' on estimated costs', '#costs', true);
+  if (ops) {
+    for (const h of ops.health.filter((x) => x.status === 'bad')) a(h.name + ' stopped working', '#health');
+    for (const v of ops.stock.active.filter((x) => x.stuck)) a('Stock, ' + v.title + ': ' + v.stuck.text, '#stock', v.stuck.level !== 'bad');
+  }
   return el('section', null,
     el('h2', { id: 'now' }, 'Needs you now'),
     items.length ? el('div', { class: 'alerts' }, items) : el('div', { class: 'alerts' }, el('span', { class: 'alert ok' }, 'All clear. Nothing waiting on you.')),
@@ -286,6 +305,72 @@ function renderTrend() {
       ))),
     ),
   );
+}
+
+// ---------------------------------------------------------------- stock and health
+
+function tapStep(v, s, btn, slot) {
+  if (!s.tapped && s.key === 'onway') {
+    const note = el('input', { type: 'text', placeholder: 'Tracking or arrival date (optional)', 'aria-label': 'Tracking or arrival date' });
+    const save = el('button', { class: 'primary', type: 'button' }, 'Save');
+    save.addEventListener('click', () => post('/dash/api/stock/step', { id: v.id, step: 'onway', done: true, note: note.value }, [save]));
+    slot.replaceChildren(el('div', { class: 'edit', style: 'grid-template-columns:minmax(0,1fr) auto' }, note, save));
+    note.focus();
+    return;
+  }
+  post('/dash/api/stock/step', { id: v.id, step: s.key, done: !s.tapped }, [btn]);
+}
+
+function stockCard(v) {
+  const slot = el('div');
+  const u = v.units;
+  const steps = v.steps.map((s) => {
+    let extra = s.done && s.at ? ' · ' + day(s.at) + (s.auto ? ' (auto)' : '') : '';
+    if (s.key === 'onway' && v.note) extra += ' · ' + v.note;
+    if (s.key === 'packed' && !s.done && u.packed) extra += ' · ' + u.packed + ' of ' + u.paid;
+    if (s.key === 'posted' && !s.done && u.posted) extra += ' · ' + u.posted + ' of ' + u.paid;
+    const button = !s.manual ? null
+      : s.tapped ? el('button', { type: 'button', class: 'link', onclick: (e) => tapStep(v, s, e.target, slot) }, 'Untick')
+        : !s.done && !s.implied ? el('button', { type: 'button', class: s.key === v.stage ? 'primary' : '', onclick: (e) => tapStep(v, s, e.target, slot) }, 'Tick')
+          : null;
+    return el('div', { class: 's' + (s.key === v.stage ? ' now' : !s.done && !s.implied ? ' later' : '') },
+      el('span', null, s.done ? '✅' : s.implied ? '☑️' : s.key === v.stage ? '👉' : '⬜'),
+      el('span', { class: 'grow' }, s.label + extra),
+      button);
+  });
+  return el('div', { class: 'card' + (v.stuck && v.stuck.level === 'bad' ? ' bad' : '') },
+    el('div', { class: 'name' }, v.title),
+    el('div', { class: 'meta' }, 'Claims closed ' + weekday(v.closedAt) + ' · ' + u.paid + ' paid' + (u.toPay ? ', ' + u.toPay + ' to pay' : '') + ' · ' + u.posted + ' posted'),
+    v.stuck ? el('p', { class: 'stuck ' + v.stuck.level }, v.stuck.text) : null,
+    el('div', { class: 'steps' }, steps),
+    slot);
+}
+
+function renderStock() {
+  if (!ops) return null;
+  const st = ops.stock;
+  return el('section', null,
+    el('h2', { id: 'stock' }, 'Stock'),
+    st.active.length ? el('div', { class: 'list' }, st.active.map(stockCard))
+      : el('p', { class: 'empty' }, 'Nothing in progress. Each sale night shows here from the moment its claims close.'),
+    st.done.length ? el('details', { class: 'card', style: 'margin-top:10px' },
+      el('summary', null, 'All posted this week (' + st.done.length + ')'),
+      el('div', { class: 'list', style: 'margin-top:10px' }, st.done.map((v) => el('div', { class: 'row' },
+        el('span', { class: 'grow' }, v.title), el('span', { class: 'meta' }, day(v.doneAt)))))) : null,
+    el('p', { class: 'note' }, 'Tick Ordered, Supplier paid, On its way and Arrived here or on the card in the staff log. The rest tick themselves: supplier paid from a Wise payment tagged as stock, arrived and packed from printed labels, posted from tracking.'));
+}
+
+const HEALTH_WORDS = { ok: 'working', warn: 'worth a look', bad: 'broken', off: 'not set up' };
+
+function renderHealth() {
+  if (!ops) return null;
+  return el('section', null,
+    el('h2', { id: 'health' }, 'Health'),
+    el('div', { class: 'card' }, el('div', { class: 'list' }, ops.health.map((h) => el('div', null,
+      el('div', { class: 'row' }, el('span', { class: 'dot ' + h.status }), el('span', { class: 'name grow' }, h.name), el('span', { class: 'meta' }, HEALTH_WORDS[h.status])),
+      el('div', { class: 'meta indent' }, h.text),
+      h.fix && (h.status === 'bad' || h.status === 'warn') ? el('div', { class: 'hint indent' }, 'Fix: ' + h.fix) : null)))),
+    el('p', { class: 'note' }, 'Checked every 15 minutes. When a part breaks, the staff log gets one ping saying how to fix it.'));
 }
 
 // ---------------------------------------------------------------- buyers
@@ -744,7 +829,7 @@ function renderCosts() {
 function render() {
   $('period').value = period;
   $('updated').textContent = 'Updated ' + new Date(stats.generatedAt).toLocaleTimeString('en-AU', { timeZone: 'Australia/Melbourne', hour: 'numeric', minute: '2-digit' });
-  $('app').replaceChildren(renderAlerts(), renderKey(), renderTrend(), renderBuyers(), renderProducts(), renderNights(), renderSpeed(), renderCustomers(), renderServer(), renderMoney(), renderCosts());
+  $('app').replaceChildren(...[renderAlerts(), renderKey(), renderStock(), renderHealth(), renderTrend(), renderBuyers(), renderProducts(), renderNights(), renderSpeed(), renderCustomers(), renderServer(), renderMoney(), renderCosts()].filter(Boolean));
 }
 
 $('period').addEventListener('change', (e) => { period = e.target.value; load(); });
@@ -757,7 +842,7 @@ const PERIOD_OPTIONS = [
 ];
 
 const JUMPS = [
-  ['now', 'Needs you'], ['overview', 'Numbers'], ['trend', 'Trend'], ['buyers', 'Buyers'], ['products', 'Products'],
+  ['now', 'Needs you'], ['overview', 'Numbers'], ['stock', 'Stock'], ['health', 'Health'], ['trend', 'Trend'], ['buyers', 'Buyers'], ['products', 'Products'],
   ['nights', 'Sale nights'], ['speed', 'Speed'], ['customers', 'Channels'], ['server', 'Server'], ['money', 'Money'], ['costs', 'Costs'],
 ];
 

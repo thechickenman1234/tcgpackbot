@@ -229,6 +229,40 @@ Then:
 
 ---
 
+## Stock tracker
+
+Every sale night's stock, from claims closing to the last parcel posted. It starts with the midnight order sheet, which posts a **stock card** in the staff log under it. Seven steps:
+
+| Step | How it's ticked |
+|---|---|
+| Claims closed | By itself, with the order sheet |
+| Ordered | Tap **Ordered** on the card (or the dashboard) |
+| Supplier paid | By itself when a Wise payment is tagged as stock for one of the night's products; a tap until Wise is connected |
+| On its way | Tap **On its way**; it asks for the tracking number or arrival date (optional) |
+| Arrived | By itself when its first labels print; a tap if you'd rather |
+| Packed | By itself when every paid order has a label |
+| All posted | By itself when every paid order has gone out and nobody is left to pay |
+
+A later step being ticked means the earlier ones happened, so stock that has arrived never asks whether it was ordered. Tapping a ticked step unticks it. A night is **stuck** (red on the dashboard, in the brief) when it isn't marked ordered 2 days after the sale, is on its way for over 14 days, or arrived over 3 days ago with units still to post; ordered over a week ago and not on its way is a yellow nudge. The dashboard's **Stock** section has every night in progress with the same tick buttons. When the tracker first ran it added the sale nights of the 45 days before, so stock bought earlier is tracked too.
+
+A night's orders are its products' claims from when the sale opened until the same product's next sale night, test buyers left out. Claude can read and tick it through `GET /ops/stock` and `POST /ops/stock/step` (`id`, `step`: ordered, paid, onway or arrived, `done`, `note`).
+
+---
+
+## Health check
+
+Every 15 minutes the bot checks each part that can break quietly: the website forms, Instagram DMs (the Zernio key and the supplier's 24 hours), Instagram and TikTok posts that failed in Zernio, the Google Sheet sync, label reading, Wise, and queued sales and posts. Each shows green (working), yellow (worth a look), red (broken) or grey (not set up) at the top of the dashboard's **Health** section. When one turns red, the staff log gets one ping with what broke and how to fix it, and a note when it works again.
+
+Website forms have a backup: if the site can't hand a form to the bot, it goes straight to the staff log through the "Website forms" webhook, marked ⚠️, and that counts as the forms breaking. The bot can't report itself being down: a missing morning brief is the sign. `GET /ops/checks` runs every check now.
+
+---
+
+## Morning brief
+
+At 9am Melbourne, one message in the staff log: **today** (the claim sale, Instagram and TikTok posts, queued Discord posts, events like streams), what **needs you** (payment screenshots, orders to post, wholesale orders, stuck stock, missing costs, Wise payments to tag, and unpaid claims for information), **yesterday's** sales, orders and new buyers, on Mondays **last week's** profit, and **health**. It pings the staff role only when something needs doing. It goes out between 9am and noon only: after a restart later in the day it waits for tomorrow. `GET /ops/brief` shows it as it would go out now, without posting.
+
+---
+
 ## Whatnot shows (`/stream`)
 
 TCG Pack Bot streams on Whatnot, where people buy inside the show. The Discord's job is sending viewers there. Staff only.
@@ -254,7 +288,7 @@ A product with no cost is never guessed: its sales show apart under "Not counted
 
 - **Other expenses** (packaging, fees, tools) go on the dashboard with a date and come off that period's profit. Not stock or labels: those are already counted per order.
 
-**Automatic, in the staff log:** Monday 9am, last week's profit plus anything still on an estimated cost. Daily 10am, a reminder listing anything sold in the last 14 days with no cost yet. Both link to the dashboard.
+**Automatic, in the staff log:** the 9am morning brief lists anything sold in the last 14 days with no cost yet, and on Mondays last week's profit plus anything still on an estimated cost (see Morning brief).
 
 **The dashboard** lives at the bot's own address, `/dash`, on the ops door's port. It only opens with a `/dashboard` link (one use, 15 minutes), which leaves a 30-day sign-in on that device. Rotating `OPS_SECRET` signs every device out. Every change made on it is posted to the staff log.
 
@@ -264,7 +298,7 @@ A new **estimate** on a product that already has a cost is treated as a new wave
 
 ## Dashboard
 
-`/dashboard` opens it. One period picker at the top (today, this or last week, this or last month, 30 or 90 days, all time) drives every section; the arrows on the key numbers compare with the same stretch one period earlier. Your own test orders are left out everywhere.
+`/dashboard` opens it. Under "Needs you now" and the key numbers come **Stock** (each sale night's progress, with tick buttons) and **Health** (every part, green to red); see Stock tracker and Health check. One period picker at the top (today, this or last week, this or last month, 30 or 90 days, all time) drives every section; the arrows on the key numbers compare with the same stretch one period earlier. Your own test orders are left out everywhere.
 
 - **Needs you now:** products sold with no cost, payment screenshots to check, paid orders not posted (and the oldest), part orders waiting for the rest, unpaid claims, products still on estimated costs.
 - **Key numbers:** sales, profit after expenses, average and middle order, buyers and new buyers, units, returning buyers, spend per buyer.

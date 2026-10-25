@@ -18,6 +18,7 @@ import {
 } from '../services/labelParcels.js';
 import { getOrderById } from '../services/orderService.js';
 import { pushToSheetInBackground } from '../services/sheetService.js';
+import { noteFail, noteOk } from '../services/healthService.js';
 
 /**
  * Drop the label PDFs in the shipping channel after a post office run and
@@ -96,9 +97,11 @@ export async function handleLabelDropMessage(message) {
       const res = await fetch(file.url);
       const found = await readLabelsFromFile(Buffer.from(await res.arrayBuffer()), file.name);
       if (!found.length) labels.push({ file: file.name, problem: 'no label picture found in it' });
+      else noteOk('labels');
       for (const l of found) labels.push({ ...l, file: file.name });
     } catch (err) {
       console.error(`Label drop: could not read ${file.name}:`, err);
+      noteFail('labels', `${file.name} couldn't be read: ${err.message}`);
       labels.push({ file: file.name, problem: 'could not be read' });
     }
   }

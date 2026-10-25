@@ -23,8 +23,10 @@ import {
 import { startGiveawayBoardJob } from './services/giveawayBoard.js';
 import { startScheduledMessagesJob } from './jobs/scheduledMessages.js';
 import { startScheduledSalesJob } from './jobs/scheduledSales.js';
-import { startProfitReportJob } from './jobs/profitReport.js';
+import { startDailyBriefJob } from './jobs/dailyBrief.js';
 import { startOrderSheetJob } from './services/orderSheet.js';
+import { startHealthJob, watchBackupForm } from './services/healthService.js';
+import { backfillStockBatches } from './services/stockTracker.js';
 import { recordChatMessage, startMemberSnapshotJob } from './services/activityService.js';
 import { startWiseSyncJob } from './services/wiseService.js';
 import { startReelReminderJob } from './handlers/reelLoop.js';
@@ -67,8 +69,14 @@ client.once('ready', async () => {
   startScheduledMessagesJob(client);
   startScheduledSalesJob(client);
   startReelReminderJob(client);
-  startProfitReportJob(client);
+  startDailyBriefJob(client);
   startOrderSheetJob(client);
+  startHealthJob(client);
+  try {
+    backfillStockBatches();
+  } catch (err) {
+    console.error('Stock backfill failed:', err);
+  }
   startMemberSnapshotJob(client);
   startWiseSyncJob();
   startOpsServer(client);
@@ -86,6 +94,7 @@ client.on('messageCreate', async (message) => {
     await handleAppealsChannelMessage(message);
     await handlePaymentProofMessage(message);
     await handleLabelDropMessage(message);
+    watchBackupForm(message);
     recordChatMessage(message);
   } catch (err) {
     console.error('messageCreate error:', err);

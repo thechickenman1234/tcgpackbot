@@ -407,6 +407,26 @@ export function initDatabase() {
       supplier_ordered_at TEXT
     )
   `);
+  // One row per sale night's stock, from claims closing to every parcel
+  // posted (stockTracker). The steps staff tap are stored here; the rest
+  // (supplier paid in Wise, labels printed, posted) are read off the orders.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS stock_batches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_ids TEXT NOT NULL,
+      since_at TEXT NOT NULL,
+      closed_at TEXT NOT NULL,
+      ordered_at TEXT,
+      supplier_paid_at TEXT,
+      on_way_at TEXT,
+      on_way_note TEXT,
+      arrived_at TEXT,
+      done_at TEXT,
+      card_channel_id TEXT,
+      card_message_id TEXT,
+      created_at TEXT NOT NULL
+    )
+  `);
 
   return db;
 }

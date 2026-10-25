@@ -4,6 +4,7 @@ import { labelOrders } from './shippingService.js';
 import { groupIntoParcels } from './parcelService.js';
 import { listAllProducts } from './productService.js';
 import { labelReferenceFor } from './labelText.js';
+import { noteFail, noteOk } from './healthService.js';
 
 /**
  * Pushes orders into the accounting spreadsheet.
@@ -138,6 +139,8 @@ let queue = Promise.resolve();
 export function pushToSheet(orders) {
   const run = queue.then(() => pushInBatches(orders));
   queue = run.catch(() => {});
+  // The health check's mark, either way.
+  run.then(() => noteOk('sheet'), (err) => noteFail('sheet', err));
   return run;
 }
 
