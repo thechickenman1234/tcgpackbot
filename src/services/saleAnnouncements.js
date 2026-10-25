@@ -1,6 +1,10 @@
 import { config } from '../config.js';
-import { closeLateWindow, listActiveProducts, openLateWindow, setProductActive } from './productService.js';
+import {
+  closeLateWindow, findProductByName, listActiveProducts, openLateWindow, setProductActive,
+} from './productService.js';
 import { clearStockpostPointer, refreshStockpost } from './stockpostService.js';
+import { currentOpenSale } from './scheduledSaleService.js';
+import { postOrderSheet } from './orderSheet.js';
 
 export function buildSaleOverMessage(productNames = []) {
   const hours = config.paymentDeadlineHours;
@@ -73,6 +77,23 @@ export async function endClaimSale(channel, { announce = true, productNames = nu
     }
   }
   clearStockpostPointer();
+
+  // What to order, in the staff log. The sale's own product list counts
+  // anything that sold out earlier in the night, which `active` no longer has.
+  if (channel?.client) {
+    try {
+      const sale = currentOpenSale();
+      const ids = active.map((p) => p.id);
+      if (sale) ids.push(...JSON.parse(sale.product_ids));
+      for (const name of names) {
+        const product = findProductByName(name);
+        if (product) ids.push(product.id);
+      }
+      await postOrderSheet(channel.client, { productIds: ids, sinceIso: sale ? sale.opened_at || sale.start_at : null });
+    } catch (err) {
+      console.error('Order sheet failed:', err);
+    }
+  }
 
   return names;
 }

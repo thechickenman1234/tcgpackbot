@@ -24,6 +24,7 @@ import { startGiveawayBoardJob } from './services/giveawayBoard.js';
 import { startScheduledMessagesJob } from './jobs/scheduledMessages.js';
 import { startScheduledSalesJob } from './jobs/scheduledSales.js';
 import { startProfitReportJob } from './jobs/profitReport.js';
+import { startOrderSheetJob } from './services/orderSheet.js';
 import { recordChatMessage, startMemberSnapshotJob } from './services/activityService.js';
 import { startWiseSyncJob } from './services/wiseService.js';
 import { startReelReminderJob } from './handlers/reelLoop.js';
@@ -67,6 +68,7 @@ client.once('ready', async () => {
   startScheduledSalesJob(client);
   startReelReminderJob(client);
   startProfitReportJob(client);
+  startOrderSheetJob(client);
   startMemberSnapshotJob(client);
   startWiseSyncJob();
   startOpsServer(client);

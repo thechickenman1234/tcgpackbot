@@ -22,6 +22,7 @@ import { PERIODS, money, profitFor } from '../services/profitService.js';
 import { handleDashboard } from '../dashboard/dashboard.js';
 import { syncWise } from '../services/wiseService.js';
 import { untaggedPayments } from '../services/moneyService.js';
+import { latestOrderSheet } from '../services/orderSheet.js';
 import {
   addProductToSale,
   cancelScheduledSale,
@@ -427,6 +428,13 @@ const routes = {
     const period = query.get('period') || 'week';
     if (!PERIODS[period]) fail(`period must be one of: ${Object.keys(PERIODS).join(', ')}.`);
     return profitFor(period, { product: query.get('product') || null });
+  },
+
+  /** Same as /ordersheet: the last sale night's order, with today's numbers. */
+  'GET /ops/ordersheet': async () => {
+    const latest = latestOrderSheet();
+    if (!latest) fail('No sale has closed since the order sheet was added.');
+    return { title: latest.title, text: latest.text, closed: latest.entry.closedAt, sheet: latest.sheet };
   },
 
   /**

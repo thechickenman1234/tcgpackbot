@@ -52,6 +52,8 @@ export const config = {
   // How long claims keep working after a sale ends, and what they cost.
   lateWindowHours: Number(optional('LATE_WINDOW_HOURS', '24')),
   lateMarkupPercent: Number(optional('LATE_MARKUP_PERCENT', '10')),
+  // Spare stock on the order sheet, as a share of what was claimed (at least 1).
+  orderSparePercent: Number(optional('ORDER_SPARE_PERCENT', '5')),
   // Claude's private door into the bot (src/ops). Off unless a secret is set.
   // Railway hands the service its port in PORT.
   opsSecret: optional('OPS_SECRET', ''),

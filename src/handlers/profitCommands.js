@@ -3,9 +3,11 @@ import { isStaff } from '../utils/permissions.js';
 import { findProductByName, listAllProducts, setProductCost } from '../services/productService.js';
 import { money, profitFor, profitLines, soldOrders, summarise } from '../services/profitService.js';
 import { loginLink } from '../dashboard/dashboard.js';
+import { latestOrderSheet } from '../services/orderSheet.js';
 
 /**
  * /dashboard, /cost and /profit: what a unit cost, and what that leaves.
+ * /ordersheet: what to buy for the last sale night.
  * Everything else profit needs (what each order sold for, its label) the bot
  * already knows. The dashboard is the easy way; the commands do the same.
  */
@@ -74,6 +76,26 @@ export async function handleProfitCommand(interaction) {
       .setColor(s.profit < 0 ? 0xc0392b : 0x27ae60)
       .setDescription(profitLines(s, { top: 12 }).join('\n').slice(0, 4000))
       .setFooter({ text: 'Sales include the shipping buyers paid. Postage is the Label Pro label. Your own test orders are left out.' })],
+    ephemeral: true,
+  });
+}
+
+export async function handleOrderSheetCommand(interaction) {
+  if (!isStaff(interaction.member)) {
+    await interaction.reply({ content: 'Staff only.', ephemeral: true });
+    return;
+  }
+  const latest = latestOrderSheet();
+  if (!latest) {
+    await interaction.reply({ content: 'No sale has closed since the order sheet was added. It posts in the staff log when the next one does.', ephemeral: true });
+    return;
+  }
+  await interaction.reply({
+    embeds: [new EmbedBuilder()
+      .setTitle(latest.title)
+      .setColor(0x3498db)
+      .setDescription(latest.text.slice(0, 4000))
+      .setFooter({ text: 'Numbers as they are right now. Your own test orders are left out.' })],
     ephemeral: true,
   });
 }

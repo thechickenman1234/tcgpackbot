@@ -128,6 +128,11 @@ export function productsFor(sale) {
   return ids.map((id) => getProductById(id)).filter(Boolean);
 }
 
+/** The scheduled sale that is open right now, if any. */
+export function currentOpenSale() {
+  return getDb().prepare("SELECT * FROM scheduled_sales WHERE status = 'open' ORDER BY start_at DESC LIMIT 1").get() || null;
+}
+
 /** Whether a product is on a sale that is open right now. */
 export function isProductInOpenSale(productId) {
   return getDb().prepare("SELECT product_ids FROM scheduled_sales WHERE status = 'open'").all()

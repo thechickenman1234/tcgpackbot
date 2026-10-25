@@ -258,6 +258,11 @@ export const commandDefinitions = [
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
   new SlashCommandBuilder()
+    .setName('ordersheet')
+    .setDescription('Staff: what to order for the last sale night, with the supplier message')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+
+  new SlashCommandBuilder()
     .setName('profit')
     .setDescription('Staff: sales, costs and profit for a period')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)

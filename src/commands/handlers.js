@@ -33,7 +33,9 @@ import { handleAuditCommand } from '../handlers/auditCommand.js';
 import { handleInvoiceCommand, invoiceAutocomplete, sendPaidInvoice } from '../handlers/invoiceMaker.js';
 import { confirmPaid } from '../handlers/paymentProof.js';
 import { handleLabelCommand, labelAutocomplete } from '../handlers/labelEditor.js';
-import { costAutocomplete, handleCostCommand, handleDashboardCommand, handleProfitCommand } from '../handlers/profitCommands.js';
+import {
+  costAutocomplete, handleCostCommand, handleDashboardCommand, handleOrderSheetCommand, handleProfitCommand,
+} from '../handlers/profitCommands.js';
 import {
   addProductToSale,
   cancelScheduledSale,
@@ -2051,6 +2053,8 @@ export async function handleSlashCommand(interaction) {
       return handleProfitCommand(interaction);
     case 'dashboard':
       return handleDashboardCommand(interaction);
+    case 'ordersheet':
+      return handleOrderSheetCommand(interaction);
     case 'appeal':
       return handleAppeal(interaction);
     case 'order':

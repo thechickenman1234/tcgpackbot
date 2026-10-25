@@ -190,6 +190,21 @@ A cancelled or bounced payment never shows. **Undo** puts a payment back on the 
 
 ---
 
+## Order sheet
+
+When claims close (midnight, a sell-out, or `/endsale`), the staff log gets the supplier order for that night:
+
+- each product: units claimed, how many paid and how many still to pay (and how many sent a payment screenshot)
+- how many to order: claimed plus a few spare, 5% rounded up and at least 1 (`ORDER_SPARE_PERCENT` to change)
+- what that costs at the product's landed cost, and the night's rough profit before postage
+- a message for each supplier, ready to copy, split by the language at the start of the product's long name (Japanese, Chinese)
+
+Only that night's claim-sale orders count. Cancelled orders, your own test orders and wholesale logged by hand are left out. A product that sold out earlier in the night is still on it.
+
+A **final order sheet** follows about 24 hours later, after the late window has shut and unpaid claims have paid or been cancelled. `/ordersheet` shows the latest night any time, with the numbers as they are right now. Already have some stock in hand or on the way? Take it off before sending.
+
+---
+
 ## Profit
 
 Profit is worked out from what the bot already knows, so nothing is typed in per order:
