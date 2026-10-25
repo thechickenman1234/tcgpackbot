@@ -11,6 +11,7 @@ import { listPosts } from '../services/zernioService.js';
 import { healthReport } from '../services/healthService.js';
 import { stuckStock } from '../services/stockTracker.js';
 import { dashboardUrl } from '../dashboard/dashboard.js';
+import { ebayBriefLines } from '../services/ebayBoard.js';
 
 /**
  * One message in the staff log at 9am Melbourne, so nobody has to check five
@@ -124,6 +125,10 @@ function needsYou(now, { monday }) {
   }
 
   for (const s of stuckStock({ now })) add(`${s.stuck.level === 'bad' ? '🔴' : '🟡'} Stock, ${s.title}: ${s.stuck.text}`, s.stuck.level === 'bad');
+
+  const ebay = ebayBriefLines({ now });
+  for (const line of ebay.lines) lines.push(line);
+  if (ebay.action) action = true;
 
   const missing = missingCosts({ now });
   if (missing.length) add(`💰 ${plural(missing.length, 'product')} sold with no cost: ${missing.slice(0, 5).map((m) => m.product).join(', ')}`);

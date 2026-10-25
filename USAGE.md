@@ -251,7 +251,7 @@ A night's orders are its products' claims from when the sale opened until the sa
 
 ## Health check
 
-Every 15 minutes the bot checks each part that can break quietly: the website forms, Instagram DMs (the Zernio key and the supplier's 24 hours), Instagram and TikTok posts that failed in Zernio, the Google Sheet sync, label reading, Wise, and queued sales and posts. Each shows green (working), yellow (worth a look), red (broken) or grey (not set up) at the top of the dashboard's **Health** section. When one turns red, the staff log gets one ping with what broke and how to fix it, and a note when it works again.
+Every 15 minutes the bot checks each part that can break quietly: the website forms, Instagram DMs (the Zernio key and the supplier's 24 hours), Instagram and TikTok posts that failed in Zernio, the Google Sheet sync, label reading, Wise, eBay (connected, and syncing), and queued sales and posts. Each shows green (working), yellow (worth a look), red (broken) or grey (not set up) at the top of the dashboard's **Health** section. When one turns red, the staff log gets one ping with what broke and how to fix it, and a note when it works again.
 
 Website forms have a backup: if the site can't hand a form to the bot, it goes straight to the staff log through the "Website forms" webhook, marked ⚠️, and that counts as the forms breaking. The bot can't report itself being down: a missing morning brief is the sign. `GET /ops/checks` runs every check now.
 
@@ -259,7 +259,24 @@ Website forms have a backup: if the site can't hand a form to the bot, it goes s
 
 ## Morning brief
 
-At 9am Melbourne, one message in the staff log: **today** (the claim sale, Instagram and TikTok posts, queued Discord posts, events like streams), what **needs you** (payment screenshots, orders to post, wholesale orders, stuck stock, missing costs, Wise payments to tag, and unpaid claims for information), **yesterday's** sales, orders and new buyers, on Mondays **last week's** profit, and **health**. It pings the staff role only when something needs doing. It goes out between 9am and noon only: after a restart later in the day it waits for tomorrow. `GET /ops/brief` shows it as it would go out now, without posting.
+At 9am Melbourne, one message in the staff log: **today** (the claim sale, Instagram and TikTok posts, queued Discord posts, events like streams), what **needs you** (payment screenshots, orders to post, wholesale orders, stuck stock, eBay orders, messages, notices, bad feedback and restocks, missing costs, Wise payments to tag, and unpaid claims for information), **yesterday's** sales, orders and new buyers, on Mondays **last week's** profit, and **health**. It pings the staff role only when something needs doing. It goes out between 9am and noon only: after a restart later in the day it waits for tomorrow. `GET /ops/brief` shows it as it would go out now, without posting.
+
+---
+
+## eBay
+
+The bot runs the eBay side through Lachy's own eBay developer keys (`EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, `EBAY_RUNAME` on Railway, plus `EBAY_VERIFY_TOKEN` for eBay's account-deletion check). Setting it up, step by step, is in `ebay/store-kit.md` in the project folder. Once the keys are on, the dashboard's **eBay** section has **Connect eBay**: eBay asks him to sign in and agree, and that's it. The connection lasts about 18 months; if eBay ends it, the dashboard, health check and brief all say to connect again.
+
+- **Listings** are made once in Seller Hub (photos, title, description, the free-postage and returns policies). The bot finds them; pick the product each one sells. From then on the listing's **quantity is the eBay shelf** (+ and - on the dashboard, **Add** when stock arrives; a sale takes one off) and its **price is cost + margin + postage, after eBay's fee** (13.4% + 30c), ending in .95. Margin and postage are set once for every listing, or per listing; a typed price overrides the margin. The cost is the product's cost on the dashboard, so a product with no cost keeps the price eBay has. A worked-out price that would move more than a third waits for an OK (it's usually a cost typo). **Keep on the shelf** sets a restock level: the brief and the dashboard say how many to order for eBay.
+- **The market:** each linked listing shows the cheapest new copies listed by Australian sellers, delivered, checked daily. Reference only: it never moves the price, because plenty of the cheapest boxes are fakes.
+- **Out-of-stock control** (a button on the dashboard) keeps a sold-out listing alive and hidden until the restock, so it keeps its sales history. Without it, eBay ends a listing at 0, so the bot never sets 0 itself.
+- **Orders:** every 5 minutes new paid eBay orders land on the **Shipping** list as paid orders tagged eBay (source `ebay`, buyer `ext:ebay-<username>`, eBay's address and phone), with the post-by time. Labels, the label drop and tracking uploads work as for any order. **Ticking an eBay parcel shipped with its tracking sends the tracking to eBay** (Australia Post, `EBAY_CARRIER` to change), which marks it shipped there. Ticked with no tracking, eBay isn't told and the dashboard asks for the code. Cancelled on eBay before posting: cancelled here and back on the shelf. A buyer asking to cancel pings the staff log to hold the parcel. Marked shipped inside eBay: ticked off here too.
+- **The thank-you:** a day after eBay's latest delivery estimate, the buyer gets one message through eBay (text in the dashboard's eBay settings; `{name}` and `{item}` fill in; links and the Discord are refused, eBay blocks them). Only orders placed after connecting.
+- **Inbox:** buyers' messages waiting on a reply, eBay's notices about returns, cases and cancellations, and feedback. Each message, notice and non-positive feedback pings the staff log once; messages can be answered from the dashboard. The first look after connecting pings nobody.
+- **Profit:** eBay orders count eBay's fee (from the order) and the label (postage is free to the buyer, the label isn't).
+- **Closed eBay accounts:** eBay tells the bot at `/ebay/account-deletion`; the buyer's name, phone and address are wiped (after any parcel still to post goes).
+
+Change stock and prices on the dashboard, not in Seller Hub, or the next sync will put them back. `GET /ops/ebay` shows the section's data; `POST /ops/ebay/sync` syncs now.
 
 ---
 
@@ -282,6 +299,7 @@ Profit is worked out from what the bot already knows, so nothing is typed in per
 - **Sales**: each paid order's total, including the shipping the buyer paid.
 - **Stock cost**: the product's cost per unit x quantity. It starts as the **estimate** from the quote (Claude adds it when it queues a sale, or `cost` on `/newsale`). When the real figure is known (bulk discounts, the actual freight), type it on the dashboard as the **real cost**: it replaces the estimate on every order of that batch. A total works too: `3524/40` is 3524 dollars over 40 boxes.
 - **Postage**: the Label Pro label each order took, $4 standard or $6.50 express (`LABEL_COST_STANDARD` / `LABEL_COST_EXPRESS` to change). Orders with no shipping take no label.
+- **eBay fees**: what eBay kept from each eBay order. eBay orders always count a label, since postage is free to the buyer.
 - Lachy's own test orders are left out (`PROFIT_EXCLUDE_BUYERS`).
 
 A product with no cost is never guessed: its sales show apart under "Not counted yet" until `/cost` is set.

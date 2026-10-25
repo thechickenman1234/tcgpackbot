@@ -10,6 +10,8 @@ import { melbourneToUtc, ZONE } from './scheduleService.js';
  *   sales    each paid order's total, shipping the buyer paid included
  *   stock    the unit cost x quantity (the order's own cost, else its product's)
  *   postage  the Label Pro label it took: standard or express, none for pickups
+ *            (eBay orders always take one: postage is free to the buyer)
+ *   fees     what eBay kept from an eBay order
  *   expenses anything else typed on the dashboard (packaging, fees), by date
  *
  * The one thing to remember is a product's cost. It starts as the estimate
@@ -41,7 +43,7 @@ export function money(cents) {
 
 /** Postage for one order: one order is one parcel is one label. */
 export function labelCostFor(order) {
-  if (!order.shipping_cents) return 0;
+  if (!order.shipping_cents && order.source !== 'ebay') return 0;
   const express = order.shipping_method === 'express'
     || (!order.shipping_method && order.shipping_cents >= config.expressShippingCents);
   return express ? config.labelCostExpressCents : config.labelCostStandardCents;
@@ -105,7 +107,7 @@ export function soldOrders({ sinceIso = null, untilIso = null, product = null } 
 
 /** Adds a list of orders up into sales, costs and profit, overall and per product. */
 export function summarise(orders) {
-  const t = { orders: 0, units: 0, sales: 0, stock: 0, postage: 0, profit: 0, costedSales: 0, estimatedSales: 0 };
+  const t = { orders: 0, units: 0, sales: 0, stock: 0, postage: 0, fees: 0, profit: 0, costedSales: 0, estimatedSales: 0 };
   const products = new Map();
   const missing = new Map();
 
@@ -130,9 +132,11 @@ export function summarise(orders) {
       continue;
     }
     const stock = o.cost_each * o.quantity;
-    const profit = o.total_cents - stock - postage;
+    const fees = o.fee_cents || 0;
+    const profit = o.total_cents - stock - postage - fees;
     t.stock += stock;
     t.postage += postage;
+    t.fees += fees;
     t.profit += profit;
     t.costedSales += o.total_cents;
     p.profit += profit;
@@ -205,6 +209,7 @@ export function profitLines(s, { top = 8 } = {}) {
     `**Sales** ${money(s.sales)} · ${s.orders} order${s.orders === 1 ? '' : 's'}, ${s.units} unit${s.units === 1 ? '' : 's'}`,
     `**Stock cost** ${money(-s.stock)}`,
     `**Postage** ${money(-s.postage)}`,
+    ...(s.fees ? [`**eBay fees** ${money(-s.fees)}`] : []),
     `**Profit** ${money(s.profit)}${s.margin == null ? '' : ` (${(s.margin * 100).toFixed(1)}% margin)`}`,
   ];
   if (s.expenses) lines.push(`**Other expenses** ${money(-s.expenses)}`, `**Profit after expenses** ${money(s.net)}`);

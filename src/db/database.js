@@ -444,6 +444,76 @@ export function initDatabase() {
       sent_at TEXT
     )
   `);
+  // eBay (ebayService and friends). A listing Lachy made in Seller Hub, the
+  // product it sells and the shelf stock behind it; each eBay order and the
+  // bot orders it became (lines is JSON, one per line item); and what's come
+  // in: buyer messages, eBay's notices and feedback.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ebay_listings (
+      item_id TEXT PRIMARY KEY,
+      product_id INTEGER,
+      title TEXT NOT NULL,
+      sku TEXT,
+      url TEXT,
+      image_url TEXT,
+      ebay_qty INTEGER,
+      ebay_price_cents INTEGER,
+      sold INTEGER NOT NULL DEFAULT 0,
+      on_hand INTEGER,
+      target INTEGER,
+      margin_pct REAL,
+      postage_cents INTEGER,
+      fixed_price_cents INTEGER,
+      held_price_cents INTEGER,
+      market_query TEXT,
+      market TEXT,
+      market_at TEXT,
+      active INTEGER NOT NULL DEFAULT 1,
+      pushed_at TEXT,
+      last_error TEXT,
+      seen_at TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS ebay_orders (
+      order_id TEXT PRIMARY KEY,
+      buyer TEXT,
+      lines TEXT NOT NULL,
+      total_cents INTEGER NOT NULL DEFAULT 0,
+      fee_cents INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      ship_by TEXT,
+      deliver_by TEXT,
+      status TEXT,
+      cancel_state TEXT,
+      imported INTEGER NOT NULL DEFAULT 1,
+      shipped_at TEXT,
+      thanked_at TEXT,
+      thank_tries INTEGER NOT NULL DEFAULT 0,
+      alerted_at TEXT,
+      last_error TEXT,
+      synced_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS ebay_inbox (
+      id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL CHECK (kind IN ('message', 'notice', 'feedback')),
+      ref TEXT,
+      who TEXT,
+      title TEXT,
+      body TEXT,
+      item_id TEXT,
+      rating TEXT,
+      needs_reply INTEGER NOT NULL DEFAULT 0,
+      unread INTEGER NOT NULL DEFAULT 0,
+      at TEXT NOT NULL,
+      seen_at TEXT NOT NULL,
+      alerted TEXT
+    );
+  `);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_ebay_orders_created ON ebay_orders(created_at)');
+  // What eBay took from an order (final value fee and the per-order fee), so
+  // profit is after it; and the eBay order a bot order came from.
+  ensureColumn('orders', 'fee_cents', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('orders', 'ebay_order_id', 'TEXT');
 
   return db;
 }

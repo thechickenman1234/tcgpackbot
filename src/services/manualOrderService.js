@@ -17,7 +17,7 @@ import { generateOrderReference } from '../utils/orderRef.js';
  * buyer everywhere else.
  */
 
-export const SOURCES = ['facebook', 'dm', 'wholesale', 'instagram', 'in_person', 'other'];
+export const SOURCES = ['facebook', 'dm', 'wholesale', 'instagram', 'in_person', 'ebay', 'other'];
 
 export function syntheticBuyerId(name) {
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);

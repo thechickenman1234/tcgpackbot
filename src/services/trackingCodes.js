@@ -241,9 +241,12 @@ async function tellBuyer(client, order, text) {
   }
 }
 
-/** Records each code's parcel and tells its buyer, the same as the label drop. */
+/**
+ * Records each code's parcel and tells its buyer, the same as the label drop.
+ * An eBay buyer has no ticket: their code goes to eBay instead (ebayOrders).
+ */
 export async function sendCodes(client, ids) {
-  const out = { sent: [], told: 0, noTicket: [], failed: 0 };
+  const out = { sent: [], told: 0, ebay: 0, noTicket: [], failed: 0 };
   for (const id of ids) {
     const row = getDb().prepare("SELECT * FROM tracking_codes WHERE id = ? AND status = 'waiting' AND order_id IS NOT NULL").get(Number(id));
     if (!row) continue;
@@ -254,7 +257,8 @@ export async function sendCodes(client, ids) {
       continue;
     }
     out.sent.push(r.order);
-    if (await tellBuyer(client, r.order, parcelMessage(r.order, r, row.tracking_code))) out.told += 1;
+    if (r.order.source === 'ebay') out.ebay += 1;
+    else if (await tellBuyer(client, r.order, parcelMessage(r.order, r, row.tracking_code))) out.told += 1;
     else {
       const b = getDb().prepare('SELECT name FROM buyers WHERE discord_id = ?').get(r.order.buyer_id);
       out.noTicket.push(`${b?.name || r.order.reference_code} (${row.tracking_code})`);
@@ -281,7 +285,10 @@ export async function shipTicked(client, orderIds) {
   if (!shipped.length) return { error: 'Those are already marked as shipped. Reload the page.' };
   let text = `${plural(shipped.length, 'parcel')} marked as shipped`;
   if (sent.told) text += `, ${sent.told} told their tracking in their ticket`;
+  if (sent.ebay) text += `, ${sent.ebay} with tracking going to eBay`;
   text += '.';
   if (sent.noTicket.length) text += ` No ticket to message: ${sent.noTicket.slice(0, 4).join(', ')}${sent.noTicket.length > 4 ? '…' : ''}.`;
-  return { shipped, text, told: sent.told, noTicket: sent.noTicket };
+  const ebayBare = plain.filter((o) => o.source === 'ebay').length;
+  if (ebayBare) text += ` ${plural(ebayBare, 'eBay parcel')} went with no tracking: add it under Tracking, so eBay counts it as posted.`;
+  return { shipped, text, told: sent.told, ebay: sent.ebay + ebayBare, noTicket: sent.noTicket };
 }

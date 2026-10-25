@@ -30,6 +30,9 @@ import { BACKUP_FORM_NAME, healthReport } from '../services/healthService.js';
 import { refreshStockCard } from '../handlers/stockCard.js';
 import { shippingBoard } from '../services/shippingBoard.js';
 import { buildBrief } from '../jobs/dailyBrief.js';
+import { ebayBoard } from '../services/ebayBoard.js';
+import { runEbaySync } from '../jobs/ebaySync.js';
+import { handleEbayDoors } from './ebayDoors.js';
 import { getOrderByToken, openWholesaleOrders, orderCode } from '../services/wholesaleOrders.js';
 import {
   handleInstagramDm, postFormAlert, startOrderFromText, startOrderFromWebsite,
@@ -692,6 +695,16 @@ const routes = {
   /** The morning brief as it would go out now, without posting it. */
   'GET /ops/brief': async (client) => buildBrief(client),
 
+  /** The eBay side as the dashboard's eBay section shows it: connection, listings, orders, inbox. */
+  'GET /ops/ebay': async () => ebayBoard(),
+
+  /** Syncs everything with eBay now: account, listings, orders, tracking, stock, inbox, thank-yous. */
+  'POST /ops/ebay/sync': async (client) => {
+    const r = await runEbaySync(client, { full: true });
+    if (r.skipped) fail('eBay isn\'t connected yet.');
+    return { text: r.errors.length ? `eBay synced with problems: ${r.errors.join('; ')}` : 'eBay synced.', report: r };
+  },
+
   /** Same as /wholesale new: an order card from what a shop asked for. */
   'POST /ops/wholesale': async (client, body) => {
     const result = await startOrderFromText(client, { username: String(body.instagram || '').replace(/^@/, ''), items: String(body.items || ''), name: body.name || null });
@@ -860,6 +873,7 @@ export function startOpsServer(client) {
     }
 
     if (key === 'POST /hooks/zernio') return handleZernioHook(client, req, res);
+    if (url.pathname.startsWith('/ebay/') && await handleEbayDoors(client, req, res, url)) return undefined;
     if (await handleWebsite(client, req, res, url)) return undefined;
 
     // The profit dashboard has its own sign-in (a link from /dashboard, then a cookie).

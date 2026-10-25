@@ -5,6 +5,7 @@ import { getMeta, setMeta } from './metaService.js';
 import { wiseStatus } from './wiseService.js';
 import { checkChat, listPosts } from './zernioService.js';
 import { openWholesaleOrders } from './wholesaleOrders.js';
+import { ebayAccount, ebayKeys } from './ebayService.js';
 
 /**
  * Is every part still working? The website forms went a month without
@@ -173,6 +174,18 @@ export async function healthReport({ now = new Date(), fresh = false } = {}) {
   } else if (!wise.syncedAt || now.getTime() - Date.parse(wise.syncedAt) > WISE_STALE) {
     items.push(item('wise', 'Wise', 'bad', `Hasn't synced since ${ago(wise.syncedAt, now)}`, 'Press Sync now on the dashboard. If nothing happens, the bot may need a restart on Railway.', 'stale'));
   } else items.push(item('wise', 'Wise', 'ok', `Synced ${ago(wise.syncedAt, now)}`));
+
+  const eb = notes.ebay;
+  const account = ebayAccount();
+  if (!ebayKeys()) items.push(item('ebay', 'eBay', 'off', 'Not set up yet (the eBay keys go on Railway)'));
+  else if (!account) items.push(item('ebay', 'eBay', 'warn', 'Keys are on, not connected yet', 'Press Connect eBay in the dashboard\'s eBay section.'));
+  else if (account.broken) items.push(item('ebay', 'eBay', 'bad', account.broken, 'Press Connect eBay in the dashboard\'s eBay section and agree on eBay.', 'broken'));
+  else if (failing(eb)) {
+    // One failed run is usually eBay being busy; failing for 2 hours isn't.
+    const long = !eb.okAt || now.getTime() - Date.parse(eb.okAt) > 2 * HOUR;
+    items.push(item('ebay', 'eBay', long ? 'bad' : 'warn', `Sync failed: ${eb.error}`,
+      long ? 'Press Sync now in the eBay section. If it fails again, the eBay keys or the connection have changed.' : 'Usually passes by itself.', 'sync'));
+  } else items.push(item('ebay', 'eBay', 'ok', eb?.okAt ? `Synced ${ago(eb.okAt, now)}${account.username ? ` as ${account.username}` : ''}` : 'Connected, first sync on its way'));
 
   const missed = failedScheduled(now);
   items.push(missed.length

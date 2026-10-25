@@ -30,6 +30,13 @@ import { grantBuyerRole } from '../services/buyerRoleService.js';
 import {
   addCodes, matchCode, readCodesFromFiles, readCodesFromText, sendCodes, shipTicked, skipCode, summaryText, unmatchCode,
 } from '../services/trackingCodes.js';
+import { connectUrl, disconnectEbay, ebayConnected, ebayKeys } from '../services/ebayService.js';
+import {
+  adjustShelf, checkMarket, pushListings, saveEbaySettings, setListing, turnOnOutOfStockControl,
+} from '../services/ebayListings.js';
+import { markHandled, replyToMessage } from '../services/ebayInbox.js';
+import { ebayBoard } from '../services/ebayBoard.js';
+import { kickEbay, runEbaySync } from '../jobs/ebaySync.js';
 import { renderDashboardPage, renderMessagePage } from './page.js';
 
 /**
@@ -46,6 +53,7 @@ import { renderDashboardPage, renderMessagePage } from './page.js';
 
 const COOKIE = 'tpb_dash';
 let lastManualSync = 0;
+let lastEbaySync = 0;
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 const LINK_TTL_MS = 15 * 60000;
 const SESSION_TTL_MS = 30 * 86400000;
@@ -167,6 +175,7 @@ export function dashboardData(period = 'month') {
       sales: detail.sales,
       stock: detail.stock,
       postage: detail.postage,
+      fees: detail.fees,
       profit: detail.profit,
       expenses: detail.expenses,
       net: detail.net,
@@ -268,7 +277,80 @@ const audit = (client, who, text) => logToStaff(client, {
   color: 0x5865f2,
 });
 
+/** An eBay change: runs it, and turns eBay's refusal into words on the page rather than a 500. */
+async function viaEbay(fn) {
+  if (!ebayConnected()) return { status: 400, error: 'eBay isn\'t connected. Press Connect eBay first.' };
+  try {
+    return await fn();
+  } catch (err) {
+    console.error('Dashboard eBay action failed:', err);
+    return { status: 502, error: `eBay said: ${err.message}` };
+  }
+}
+
+const pushedText = (r) => (r.failed.length ? ` eBay didn't take it: ${r.failed[0]}` : r.pushed ? ' eBay is updated.' : '');
+
 const actions = {
+  'POST /dash/api/ebay/listing': async (client, who, body) => viaEbay(async () => {
+    const r = setListing(String(body.itemId || ''), body);
+    if (r.error) return { status: 400, error: r.error };
+    const p = await pushListings({ itemIds: [r.row.item_id] });
+    audit(client, who, `eBay listing **${r.row.title}** changed: ${Object.keys(body).filter((k) => k !== 'itemId').join(', ')}.`);
+    return { text: `Saved.${pushedText(p)}` };
+  }),
+  'POST /dash/api/ebay/shelf': async (client, who, body) => viaEbay(async () => {
+    const r = adjustShelf(String(body.itemId || ''), body.delta);
+    if (r.error) return { status: 400, error: r.error };
+    const p = await pushListings({ itemIds: [r.row.item_id] });
+    audit(client, who, `eBay shelf, **${r.row.title}**: ${Number(body.delta) > 0 ? '+' : ''}${Number(body.delta)}, now ${r.onHand}.`);
+    return { text: `${r.onHand} on the shelf.${pushedText(p)}` };
+  }),
+  'POST /dash/api/ebay/price': async (client, who, body) => viaEbay(async () => {
+    const p = await pushListings({ itemIds: [String(body.itemId || '')], acceptHeld: true });
+    audit(client, who, `eBay price change OK'd for listing ${String(body.itemId || '')}.`);
+    return p.pushed ? { text: 'New price is on eBay.' } : { status: 400, error: p.failed[0] || 'Nothing to change. Reload the page.' };
+  }),
+  'POST /dash/api/ebay/market': async (client, who, body) => viaEbay(async () => {
+    const found = await checkMarket(String(body.itemId || ''));
+    if (!found) return { status: 404, error: 'That listing is gone. Press Sync now.' };
+    return { text: found.length ? `Cheapest in Australia: ${money(found[0].cents)} delivered.` : 'Nobody else in Australia has it listed new right now.' };
+  }),
+  'POST /dash/api/ebay/settings': async (client, who, body) => {
+    const r = saveEbaySettings(body);
+    if (r.error) return { status: 400, error: r.error };
+    audit(client, who, `eBay settings changed: ${Object.keys(body).join(', ')}.`);
+    if (!ebayConnected()) return { text: 'Saved.' };
+    const p = await pushListings().catch((err) => ({ pushed: 0, failed: [err.message] }));
+    return { text: `Saved.${pushedText(p)}` };
+  },
+  'POST /dash/api/ebay/oos': async (client, who) => viaEbay(async () => {
+    await turnOnOutOfStockControl();
+    audit(client, who, 'eBay out-of-stock control turned on.');
+    const p = await pushListings();
+    return { text: `Out-of-stock control is on: a listing at 0 stays up, hidden, until you restock.${pushedText(p)}` };
+  }),
+  'POST /dash/api/ebay/reply': async (client, who, body) => viaEbay(async () => {
+    const r = await replyToMessage(String(body.id || ''), body.text);
+    if (r.error) return { status: 400, error: r.error };
+    audit(client, who, `eBay reply sent: "${String(body.text || '').slice(0, 300)}"`);
+    return { text: r.text };
+  }),
+  'POST /dash/api/ebay/handled': async (client, who, body) => {
+    const r = markHandled(String(body.id || ''));
+    return r.error ? { status: 400, error: r.error } : { text: r.text };
+  },
+  'POST /dash/api/ebay/sync': async (client) => viaEbay(async () => {
+    if (Date.now() - lastEbaySync < 30000) return { status: 429, error: 'Synced under a minute ago. Try again shortly.' };
+    lastEbaySync = Date.now();
+    const r = await runEbaySync(client, { full: true });
+    const o = r.orders || {};
+    return { text: r.errors.length ? `Synced, with problems: ${r.errors.join('; ')}` : `Synced${o.added ? `: ${plural(o.added, 'new order')}` : ''}.` };
+  }),
+  'POST /dash/api/ebay/disconnect': async (client, who) => {
+    disconnectEbay();
+    audit(client, who, 'eBay disconnected from the bot.');
+    return { text: 'eBay is disconnected. Nothing changes on eBay itself.' };
+  },
   'POST /dash/api/cost': async (client, who, body) => {
     const product = getProductById(Number(body.productId));
     if (!product) return { status: 404, error: 'That product is gone. Reload the page.' };
@@ -342,6 +424,7 @@ const actions = {
       await postTrackingToThread(client, result.shipped[0]);
       pushToSheetInBackground(result.shipped, 'posted');
     }
+    if (result.shipped.some((o) => o.source === 'ebay')) kickEbay(client);
     const names = result.shipped.map((o) => `${o.quantity}x ${o.product_name} (${o.reference_code})`);
     audit(client, who, `Marked shipped: ${names.slice(0, 15).join(', ')}${names.length > 15 ? ` and ${names.length - 15} more` : ''}${body.tracking ? ', tracking sent to the buyer' : result.told ? `, ${result.told} told their tracking` : ''}.`);
     return { text: result.text };
@@ -372,6 +455,7 @@ const actions = {
     if (!ids.length) return { status: 400, error: 'Nothing to send.' };
     const r = await sendCodes(client, ids);
     if (!r.sent.length) return { status: 400, error: 'Those were already sent. Reload the page.' };
+    if (r.ebay) kickEbay(client);
     audit(client, who, `Tracking sent for parcels already marked shipped: ${r.sent.map((o) => o.reference_code).join(', ')}.`);
     return { text: `Tracking sent for ${r.sent.length}, ${r.told} told in their ticket.${r.noTicket.length ? ` No ticket: ${r.noTicket.slice(0, 4).join(', ')}.` : ''}` };
   },
@@ -441,7 +525,12 @@ export async function handleDashboard(client, req, res, url) {
       return sendJson(res, 200, { ok: true, ...dashboardData(url.searchParams.get('period') || 'month') });
     }
     if (req.method === 'GET' && path === '/dash/api/ops') {
-      return sendJson(res, 200, { ok: true, stock: stockBoard(), health: await healthReport(), shipping: shippingBoard() });
+      return sendJson(res, 200, { ok: true, stock: stockBoard(), health: await healthReport(), shipping: shippingBoard(), ebay: ebayBoard() });
+    }
+    if (req.method === 'GET' && path === '/dash/ebay/connect') {
+      if (!ebayKeys()) return sendHtml(res, 400, renderMessagePage('The eBay keys aren\'t on Railway yet, so there\'s nothing to connect.', { href: '/dash#ebay', text: 'Back to the dashboard' }));
+      res.writeHead(303, { Location: connectUrl({ scopeSet: url.searchParams.get('basic') ? 'core' : 'full' }), 'Cache-Control': 'no-store' });
+      return res.end();
     }
     if (req.method === 'GET' && path === '/dash/api/buyers') {
       return sendJson(res, 200, { ok: true, buyers: searchBuyers(url.searchParams.get('q')) });

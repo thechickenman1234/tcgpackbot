@@ -98,6 +98,15 @@ export const config = {
   wholesaleAutoAsksPerDay: Number(optional('WHOLESALE_AUTO_ASKS_PER_DAY', '10')),
   // For a supplier shipping quote in yuan, the AUD it's roughly worth.
   cnyPerAud: Number(optional('CNY_PER_AUD', '4.7')),
+  // eBay (ebayService): the developer keys from developer.ebay.com, the RuName
+  // eBay sends him back through after he agrees, and the token eBay's
+  // account-deletion check is answered with. Off until the keys are set.
+  ebayClientId: optional('EBAY_CLIENT_ID', '').trim(),
+  ebayClientSecret: optional('EBAY_CLIENT_SECRET', '').trim(),
+  ebayRuName: optional('EBAY_RUNAME', '').trim(),
+  ebayVerifyToken: optional('EBAY_VERIFY_TOKEN', '').trim(),
+  // How eBay names the carrier on a tracking number (Label Pro labels are Australia Post).
+  ebayCarrier: optional('EBAY_CARRIER', 'AustraliaPost').trim(),
   // Accounts whose orders are tests, never sales (Lachy's own), left out of /profit.
   profitExcludeBuyerIds: optional('PROFIT_EXCLUDE_BUYERS', '315063309550354434')
     .split(',').map((s) => s.trim()).filter(Boolean),

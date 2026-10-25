@@ -130,6 +130,16 @@ svg.chart { width: 100%; height: auto; display: block; }
 .form-grid .full { grid-column: 1 / -1; }
 #shipbar { position: fixed; left: 16px; right: 16px; bottom: 16px; max-width: 520px; margin: 0 auto; display: none; gap: 8px; align-items: center; padding: 10px 12px; border-radius: 14px; background: var(--card); border: 1px solid var(--accent); box-shadow: 0 6px 24px rgba(0, 0, 0, .25); z-index: 9; }
 #shipbar.show { display: flex; }
+a.btn { display: inline-block; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--chip); color: var(--ink); text-decoration: none; }
+a.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 650; }
+.thumb { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; flex: 0 0 auto; background: var(--chip); }
+a.name { color: var(--ink); text-decoration: none; }
+a.name:hover { text-decoration: underline; }
+a.meta { color: var(--soft); text-decoration: none; }
+a.meta:hover { text-decoration: underline; }
+.shelf { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.shelf .count { font-size: 22px; font-weight: 700; min-width: 2ch; text-align: center; font-variant-numeric: tabular-nums; }
+.shelf button { padding: 6px 14px; font-size: 18px; line-height: 1.2; }
 `;
 
 const SCRIPT = `
@@ -247,6 +257,21 @@ function renderAlerts() {
   if (n.partOrders) a(plural(n.partOrders, 'part order') + ' waiting for the rest', '#speed');
   if (n.unpaid) a(plural(n.unpaid, 'unpaid claim') + ' (' + dollars(n.unpaidValue) + ')', '#speed', true);
   if (n.estimates) a(plural(n.estimates, 'product') + ' on estimated costs', '#costs', true);
+  if (ops && ops.ebay && ops.ebay.keys) {
+    const e = ops.ebay;
+    if (!e.connected) a(e.account && e.account.broken ? 'eBay needs connecting again' : 'eBay not connected yet', '#ebay', !(e.account && e.account.broken));
+    else {
+      if (e.inbox.messages.length) a(plural(e.inbox.messages.length, 'eBay message') + ' to answer', '#ebay');
+      if (e.inbox.notices.length) a(plural(e.inbox.notices.length, 'eBay notice') + ' to check', '#ebay');
+      if (e.orders.late) a(plural(e.orders.late, 'eBay order') + ' late to post', '#shipping');
+      if (e.orders.cancelRequests.length) a(plural(e.orders.cancelRequests.length, 'eBay buyer') + ' asking to cancel', '#ebay');
+      if (e.orders.noTracking.length) a(plural(e.orders.noTracking.length, 'eBay parcel') + ' with no tracking', '#ebay');
+      const held = e.listings.filter((l) => l.status === 'held').length;
+      if (held) a(plural(held, 'eBay price') + ' waiting for your OK', '#ebay');
+      const unlinked = e.listings.filter((l) => l.status === 'unlinked').length;
+      if (unlinked) a(plural(unlinked, 'eBay listing') + ' to link', '#ebay', true);
+    }
+  }
   if (ops) {
     for (const h of ops.health.filter((x) => x.status === 'bad')) a(h.name + ' stopped working', '#health');
     for (const v of ops.stock.active.filter((x) => x.stuck)) a('Stock, ' + v.title + ': ' + v.stuck.text, '#stock', v.stuck.level !== 'bad');
@@ -382,7 +407,7 @@ function trackingForm(p, slot) {
   save.addEventListener('click', () => { picked.delete(p.id); post('/dash/api/ship', { ids: [p.id], tracking: code.value }, [save]); });
   slot.replaceChildren(
     el('div', { class: 'edit', style: 'grid-template-columns:minmax(0,1fr) auto;margin-top:6px' }, code, save),
-    el('p', { class: 'hint' }, 'They get the tracking number in their ticket.'));
+    el('p', { class: 'hint' }, p.ebay ? 'It goes to eBay as their tracking.' : 'They get the tracking number in their ticket.'));
   code.focus();
 }
 
@@ -393,6 +418,7 @@ function parcelRow(p) {
   const tags = [
     p.code ? el('span', { class: 'chip real' }, 'Tracking ready ' + p.code.short) : null,
     p.code ? el('button', { type: 'button', class: 'link', style: 'font-size:13px;padding:0 4px', onclick: (e) => { e.preventDefault(); post('/dash/api/tracking/unmatch', { id: p.code.id }, [e.target]); } }, 'Wrong parcel') : null,
+    p.ebay ? el('span', { class: 'chip active' }, 'eBay' + (p.shipBy ? ', post by ' + shipByText(p.shipBy) : '')) : null,
     p.express ? el('span', { class: 'chip est' }, 'Express') : null,
     p.sent ? el('span', { class: 'chip' }, p.sent + ' sent already') : null,
     p.address ? null : el('span', { class: 'chip bad' }, 'No address'),
@@ -592,7 +618,7 @@ function renderShipping() {
     el('div', { style: 'margin-top:10px' }, search),
     tickReady ? el('div', { class: 'row', style: 'margin:0 0 10px' }, tickReady, el('span', { class: 'meta' }, plural(readyIds.size, 'parcel') + ' with a code waiting')) : null,
     el('div', { id: 'shiplist', class: 'stack' }, shipListContent()),
-    el('p', { class: 'note' }, 'Tick what went out, then Mark shipped at the bottom. A parcel with tracking ready (or a code typed under Tracking) tells the buyer in their ticket; one without, nobody is told. Make labels downloads the file for your label app.'));
+    el('p', { class: 'note' }, 'Tick what went out, then Mark shipped at the bottom. A parcel with tracking ready (or a code typed under Tracking) tells the buyer in their ticket, or eBay for an eBay order; one without, nobody is told. Make labels downloads the file for your label app.'));
 }
 
 function uploadForm() {
@@ -621,6 +647,291 @@ function uploadForm() {
   });
   return el('div', { class: 'stack', style: 'gap:8px;margin-top:10px' }, files, paste, el('div', null, go),
     el('p', { class: 'hint' }, 'Label Pro PDFs work: each label is read for its tracking number, name and order number, and matched to its parcel. Nothing is sent yet. When the parcel goes out, tick it and Mark shipped: only then does the buyer get their tracking in their ticket.'));
+}
+
+// ---------------------------------------------------------------- eBay
+
+const EBAY_STAGE = {
+  'to-post': ['To post', 'est'], 'no-tracking': ['Needs tracking', 'bad'], sending: ['Sending tracking', ''],
+  'on-ebay': ['Shipped on eBay', 'real'], thanked: ['Thanked', 'real'], cancelled: ['Cancelled', ''],
+};
+const LISTING_STATUS = {
+  linked: ['Up to date', 'real'], updating: ['Updating eBay', ''], held: ['Price waiting for you', 'est'],
+  error: ['eBay refused a change', 'bad'], unlinked: ['Not linked yet', 'est'], ended: ['Ended', ''],
+};
+
+function agoText(iso) {
+  if (!iso) return 'never';
+  const m = (Date.now() - Date.parse(iso)) / 60000;
+  if (m < 2) return 'just now';
+  if (m < 60) return Math.round(m) + ' min ago';
+  if (m < 48 * 60) return Math.round(m / 60) + ' h ago';
+  return Math.round(m / 1440) + ' days ago';
+}
+const shipByText = (iso) => iso ? new Date(iso).toLocaleString('en-AU', { timeZone: 'Australia/Melbourne', weekday: 'short', hour: 'numeric', minute: '2-digit' }) : '';
+const labelled = (text, input) => el('label', null, el('div', { class: 'meta' }, text), input);
+
+function copyLine(label, value) {
+  const box = el('input', { type: 'text', readonly: true, value, 'aria-label': label });
+  box.addEventListener('focus', () => box.select());
+  return labelled(label, box);
+}
+
+function ebaySetup(e) {
+  const a = e.account;
+  if (!e.keys) {
+    return el('div', { class: 'card' },
+      el('div', { class: 'name' }, "eBay isn't set up yet"),
+      el('ol', { class: 'meta', style: 'margin:8px 0;padding-left:20px' },
+        el('li', null, 'Make a free developer account at developer.ebay.com, then a Production keyset.'),
+        el('li', null, 'On Railway, add its App ID, Cert ID and RuName as EBAY_CLIENT_ID, EBAY_CLIENT_SECRET and EBAY_RUNAME.'),
+        el('li', null, 'Come back here and press Connect eBay.')),
+      el('div', { class: 'stack', style: 'gap:8px' },
+        copyLine("eBay's accepted and declined URL", e.urls.callback),
+        copyLine('Account deletion endpoint', e.urls.deletion)),
+      e.verifyToken ? null : el('p', { class: 'hint' }, "The account deletion token (EBAY_VERIFY_TOKEN) isn't on Railway yet either."));
+  }
+  const broken = Boolean(a && a.broken);
+  return el('div', { class: 'card' + (broken ? ' bad' : '') },
+    el('div', { class: 'name' }, broken ? 'eBay needs connecting again' : 'Connect your eBay account'),
+    el('p', { class: 'meta' }, broken ? a.broken : 'eBay asks you to sign in and agree. Then orders, stock, prices, messages and feedback show here.'),
+    el('div', { class: 'row', style: 'margin-top:8px' }, el('a', { class: 'btn primary', href: '/dash/ebay/connect' }, 'Connect eBay')),
+    el('p', { class: 'hint' }, 'If eBay says the scope is invalid, ', el('a', { href: '/dash/ebay/connect?basic=1' }, 'connect without messages and feedback'), ' for now.'));
+}
+
+function ebayAccountCard(e) {
+  const a = e.account || {};
+  const limit = a.limit && (a.limit.quantity || a.limit.amountCents)
+    ? 'selling limit ' + [a.limit.quantity ? a.limit.quantity + ' items' : null, a.limit.amountCents ? dollars(a.limit.amountCents) : null].filter(Boolean).join(' or ') + ' a month'
+    : null;
+  const bits = [
+    a.username ? 'Connected as ' + a.username : 'Connected',
+    a.accountType ? (a.accountType === 'BUSINESS' ? 'business account' : 'personal account') : null,
+    a.store ? a.store + ' store' : 'no store plan',
+    limit,
+  ].filter(Boolean);
+  const sync = el('button', { type: 'button' }, 'Sync now');
+  sync.addEventListener('click', () => post('/dash/api/ebay/sync', {}, [sync]));
+  const oos = a.oos === false ? el('button', { type: 'button', class: 'primary' }, 'Turn on out-of-stock control') : null;
+  if (oos) oos.addEventListener('click', () => post('/dash/api/ebay/oos', {}, [oos]));
+  const errs = e.sync && e.sync.errors ? e.sync.errors : [];
+  return el('div', { class: 'card' },
+    el('div', { class: 'name' }, bits.join(' · ')),
+    el('div', { class: 'meta' }, 'Synced ' + agoText(e.sync && e.sync.at) + '.'),
+    a.accountType === 'INDIVIDUAL' ? el('p', { class: 'hint' }, 'Your eBay account is still personal. Switch it to business in eBay (Account settings, Personal info).') : null,
+    a.oos === false ? el('p', { class: 'hint' }, 'Out-of-stock control is off, so a listing that sells out ends and loses its sales history. Turn it on to keep it up, hidden, at 0.') : null,
+    e.extras ? null : el('p', { class: 'hint' }, "Messages and feedback aren't connected (eBay didn't allow them for the app). Orders, stock and prices still work."),
+    errs.length ? el('p', { class: 'stuck warn' }, 'Last sync: ' + errs.join('; ')) : null,
+    el('div', { class: 'row', style: 'margin-top:8px' }, oos, sync));
+}
+
+function ebayMessageCard(m) {
+  const box = el('textarea', { rows: '3', placeholder: 'Your reply', 'aria-label': 'Reply to ' + (m.who || 'the buyer') });
+  const send = el('button', { class: 'primary', type: 'button' }, 'Send reply');
+  send.addEventListener('click', () => post('/dash/api/ebay/reply', { id: m.id, text: box.value }, [send]));
+  const skip = el('button', { type: 'button', class: 'link' }, 'No reply needed');
+  skip.addEventListener('click', () => post('/dash/api/ebay/handled', { id: m.id }, [skip]));
+  return el('div', { class: 'card' + (m.hours > 12 ? ' bad' : '') },
+    el('div', { class: 'head' }, el('span', { class: 'name' }, m.who || 'Buyer'), el('span', { class: 'meta' }, agoText(m.at))),
+    m.title ? el('div', { class: 'meta' }, m.title) : null,
+    el('p', { style: 'margin:6px 0 8px;overflow-wrap:anywhere' }, m.body || ''),
+    box,
+    el('div', { class: 'row', style: 'margin-top:6px' }, send, skip));
+}
+
+function ebayNoticeCard(n, url) {
+  const done = el('button', { type: 'button', class: 'link' }, 'Done');
+  done.addEventListener('click', () => post('/dash/api/ebay/handled', { id: n.id }, [done]));
+  return el('div', { class: 'card todo' },
+    el('div', { class: 'head' }, el('span', { class: 'name' }, n.title || 'eBay notice'), el('span', { class: 'meta' }, agoText(n.at))),
+    n.body ? el('p', { class: 'meta', style: 'margin:6px 0' }, n.body) : null,
+    el('div', { class: 'row' }, el('a', { href: url, target: '_blank', rel: 'noopener noreferrer' }, 'Open eBay messages'), done));
+}
+
+function ebayListingCard(l) {
+  const e = ops.ebay;
+  const st = LISTING_STATUS[l.status] || [l.status, ''];
+  const head = el('div', { class: 'row', style: 'align-items:flex-start' },
+    l.image ? el('img', { class: 'thumb', src: l.image, alt: '', onerror: (ev) => ev.target.remove() }) : null,
+    el('div', { class: 'grow' },
+      el('a', { class: 'name', href: l.url, target: '_blank', rel: 'noopener noreferrer' }, l.title),
+      el('div', { class: 'row', style: 'margin-top:4px' }, el('span', { class: 'chip ' + st[1] }, st[0]), l.sold ? el('span', { class: 'chip' }, l.sold + ' sold through the bot') : null)));
+  const nowLine = 'eBay shows ' + (l.ebayQty == null ? '?' : l.ebayQty) + ' available at ' + (l.ebayPrice ? money(l.ebayPrice) : '?');
+
+  if (!l.productId) {
+    const sel = productSelect('Product this listing sells', false);
+    const link = el('button', { class: 'primary', type: 'button' }, 'Link');
+    link.addEventListener('click', () => post('/dash/api/ebay/listing', { itemId: l.itemId, productId: sel.value }, [link]));
+    return el('div', { class: 'card' }, head,
+      el('p', { class: 'meta' }, nowLine + '. Pick the product it sells, so its stock, price and profit work. Linking changes nothing on eBay.'),
+      el('div', { class: 'edit', style: 'grid-template-columns:minmax(0,1fr) auto' }, sel, link));
+  }
+
+  const minus = el('button', { type: 'button', 'aria-label': 'One fewer on the shelf' }, '−');
+  const plus = el('button', { type: 'button', 'aria-label': 'One more on the shelf' }, '+');
+  minus.addEventListener('click', () => post('/dash/api/ebay/shelf', { itemId: l.itemId, delta: -1 }, [minus, plus]));
+  plus.addEventListener('click', () => post('/dash/api/ebay/shelf', { itemId: l.itemId, delta: 1 }, [minus, plus]));
+  const arrived = el('input', { type: 'text', inputmode: 'numeric', placeholder: 'Arrived', 'aria-label': 'How many arrived', style: 'width:6.5em' });
+  const add = el('button', { type: 'button' }, 'Add');
+  add.addEventListener('click', () => post('/dash/api/ebay/shelf', { itemId: l.itemId, delta: Number(arrived.value) }, [add]));
+  const shelf = el('div', { class: 'shelf' }, el('span', { class: 'meta' }, 'On the shelf'), minus, el('span', { class: 'count' }, String(l.onHand == null ? 0 : l.onHand)), plus, arrived, add);
+
+  const priceLine = l.price
+    ? el('div', null, el('span', { class: 'num' }, money(l.price)),
+      el('span', { class: 'meta' }, l.priceFrom === 'typed' ? ' your price' : ' at ' + l.terms.marginPct + '% on cost'),
+      l.profit != null ? el('span', { class: 'meta' }, ' · ' + money(l.profit) + ' profit a box after eBay and postage') : null)
+    : el('div', { class: 'meta' }, 'No cost for this product yet: add it under Costs and the price follows your margin. Until then eBay keeps its price.');
+
+  let held = null;
+  if (l.held) {
+    const ok = el('button', { class: 'primary', type: 'button' }, 'Use ' + money(l.held));
+    ok.addEventListener('click', () => post('/dash/api/ebay/price', { itemId: l.itemId }, [ok]));
+    held = el('div', { class: 'card todo', style: 'margin-top:8px' },
+      el('div', { class: 'meta' }, 'New price waiting: ' + money(l.ebayPrice) + ' to ' + money(l.held) + '. That is a big jump, so check the cost first.'),
+      el('div', { style: 'margin-top:6px' }, ok));
+  }
+
+  const check = el('button', { type: 'button', class: 'link' }, 'Check now');
+  check.addEventListener('click', () => post('/dash/api/ebay/market', { itemId: l.itemId }, [check]));
+  const market = el('div', { style: 'margin-top:8px' },
+    el('div', { class: 'meta' }, 'Cheapest in Australia, delivered (for reference: fakes undercut, so it never sets your price)'),
+    l.market && l.market.length
+      ? el('div', { class: 'list', style: 'gap:2px;margin-top:4px' }, l.market.map((m) => el('a', { href: m.url, target: '_blank', rel: 'noopener noreferrer', class: 'meta' },
+        money(m.cents) + ' · ' + (m.seller || 'seller') + (m.score != null ? ' (' + m.score.toLocaleString('en-AU') + (m.pct ? ', ' + m.pct + '%' : '') + ')' : '') + (m.score != null && m.score < 50 ? ' · new seller' : ''))))
+      : el('div', { class: 'meta' }, l.marketAt ? 'Nobody else in Australia has it listed new right now.' : 'Not checked yet.'),
+    el('div', { class: 'row' }, el('span', { class: 'hint', style: 'margin:0' }, 'Searched "' + l.marketQuery + '"' + (l.marketAt ? ', ' + agoText(l.marketAt) : '')), check));
+
+  const target = el('input', { type: 'text', inputmode: 'numeric', value: l.target == null ? '' : String(l.target), placeholder: 'e.g. 10', 'aria-label': 'Keep this many on the shelf' });
+  const margin = el('input', { type: 'text', inputmode: 'decimal', value: l.marginPct == null ? '' : String(l.marginPct), placeholder: String(e.settings.marginPct), 'aria-label': 'Margin on cost, percent' });
+  const postage = el('input', { type: 'text', inputmode: 'decimal', value: l.postage == null ? '' : (l.postage / 100).toFixed(2), placeholder: (e.settings.postageCents / 100).toFixed(2), 'aria-label': 'Postage and packing, dollars' });
+  const fixed = el('input', { type: 'text', inputmode: 'decimal', value: l.fixedPrice ? (l.fixedPrice / 100).toFixed(2) : '', placeholder: 'Blank: from your margin', 'aria-label': 'Your own price, dollars' });
+  const query = el('input', { type: 'text', value: l.marketQuery, 'aria-label': 'Market search words' });
+  const product = productSelect('Product this listing sells', false);
+  product.value = String(l.productId);
+  const save = el('button', { class: 'primary', type: 'button' }, 'Save');
+  save.addEventListener('click', () => post('/dash/api/ebay/listing', {
+    itemId: l.itemId, productId: product.value, target: target.value, marginPct: margin.value, postage: postage.value, fixedPrice: fixed.value, marketQuery: query.value,
+  }, [save]));
+  const options = el('details', { style: 'margin-top:8px' }, el('summary', { class: 'meta' }, 'Price, margin and restock'),
+    el('div', { class: 'stack', style: 'gap:8px;margin-top:8px' },
+      el('div', { class: 'form-grid' },
+        labelled('Keep on the shelf', target), labelled('Margin on cost, %', margin),
+        labelled('Postage and packing, $', postage), labelled('Your own price, $', fixed),
+        el('div', { class: 'full' }, labelled('Sells', product)),
+        el('div', { class: 'full' }, labelled('Market search words', query))),
+      el('div', null, save)));
+
+  return el('div', { class: 'card' + (l.status === 'error' ? ' bad' : '') }, head,
+    el('div', { class: 'meta', style: 'margin-top:6px' }, (l.product || '') + ' · ' + nowLine + (l.cost ? ' · cost ' + money(l.cost) + (l.costActual ? '' : ' (estimate)') : '')),
+    el('div', { style: 'margin-top:8px' }, shelf),
+    l.target != null ? el('div', { class: 'meta', style: 'margin-top:4px' }, l.restock ? 'Keep ' + l.target + ' on the shelf: order ' + l.restock + ' more' : 'Keep ' + l.target + ' on the shelf: stocked') : null,
+    l.onHand === 0 && e.account && e.account.oos !== true ? el('p', { class: 'hint' }, 'At 0 eBay ends the listing unless out-of-stock control is on.') : null,
+    el('div', { style: 'margin-top:8px' }, priceLine),
+    held,
+    l.error ? el('p', { class: 'stuck bad' }, "eBay didn't take the last change: " + l.error) : null,
+    market,
+    options);
+}
+
+function ebayOrdersCard(o) {
+  if (!o.list.length) return el('p', { class: 'empty' }, 'No eBay orders in the last 3 weeks.');
+  const limit = shown.ebayOrders ? o.list.length : 8;
+  return el('div', { class: 'card' },
+    el('div', { class: 'list parcels' }, o.list.slice(0, limit).map((x) => {
+      const st = EBAY_STAGE[x.stage] || [x.stage, ''];
+      return el('div', { class: 'parcel' },
+        el('div', null,
+          el('span', { class: 'name' }, x.name || x.buyer || 'Buyer'),
+          el('div', { class: 'meta' }, x.what + ' · ' + money(x.total) + (x.fee ? ' (eBay kept ' + money(x.fee) + ')' : '') + ' · ' + day(x.createdAt)
+            + (x.stage === 'to-post' && x.shipBy ? ' · post by ' + shipByText(x.shipBy) : '')),
+          x.unlinked ? el('div', { class: 'hint' }, 'Listing not linked to a product, so it has no cost.') : null,
+          x.error ? el('div', { class: 'hint' }, x.error) : null),
+        el('span', { class: 'chip ' + (x.late && x.stage === 'to-post' ? 'bad' : st[1]) }, x.late && x.stage === 'to-post' ? 'Late' : st[0]));
+    })),
+    more('ebayOrders', o.list.length, 8));
+}
+
+const FEEDBACK_CHIP = { POSITIVE: ['Positive', 'real'], NEUTRAL: ['Neutral', 'est'], NEGATIVE: ['Negative', 'bad'] };
+
+function ebayFeedbackCard(inbox) {
+  const seen = inbox.feedbackSeen;
+  return el('div', { class: 'card' },
+    el('div', { class: 'meta', style: 'margin-bottom:8px' }, 'Seen this year: ' + seen.positive + ' positive, ' + seen.neutral + ' neutral, ' + seen.negative + ' negative'),
+    el('div', { class: 'list' }, inbox.feedback.map((f) => {
+      const c = FEEDBACK_CHIP[f.rating] || [f.rating || 'Feedback', ''];
+      return el('div', null,
+        el('div', { class: 'row' }, el('span', { class: 'chip ' + c[1] }, c[0]), el('span', { class: 'meta grow' }, (f.who || 'Buyer') + ' · ' + day(f.at))),
+        f.body ? el('div', { style: 'margin-top:2px;overflow-wrap:anywhere' }, f.body) : null);
+    })));
+}
+
+function ebaySettingsCard(e) {
+  const s = e.settings;
+  const margin = el('input', { type: 'text', inputmode: 'decimal', value: String(s.marginPct), 'aria-label': 'Margin on cost, percent' });
+  const postage = el('input', { type: 'text', inputmode: 'decimal', value: (s.postageCents / 100).toFixed(2), 'aria-label': 'Postage and packing a box, dollars' });
+  const fee = el('input', { type: 'text', inputmode: 'decimal', value: String(s.feePct), 'aria-label': "eBay's fee, percent" });
+  const thank = el('input', { type: 'checkbox', checked: s.thankYou });
+  const text = el('textarea', { rows: '4', 'aria-label': 'Thank-you message' });
+  text.value = s.thankText;
+  const save = el('button', { class: 'primary', type: 'button' }, 'Save');
+  save.addEventListener('click', () => post('/dash/api/ebay/settings', {
+    marginPct: margin.value, postage: postage.value, feePct: fee.value, thankYou: thank.checked, thankText: text.value,
+  }, [save]));
+  const off = el('button', { type: 'button' }, 'Disconnect eBay');
+  off.addEventListener('click', () => {
+    if (off.dataset.sure) post('/dash/api/ebay/disconnect', {}, [off]);
+    else {
+      off.dataset.sure = '1';
+      off.textContent = 'Press again to disconnect';
+    }
+  });
+  const box = el('details', { class: 'card', open: Boolean(shown.ebaySettings) }, el('summary', null, 'eBay settings'),
+    el('div', { class: 'stack', style: 'gap:8px;margin-top:10px' },
+      el('div', { class: 'form-grid' },
+        labelled('Margin on cost, %', margin), labelled('Postage and packing a box, $', postage), labelled("eBay's fee, %", fee)),
+      el('p', { class: 'hint', style: 'margin:0' }, 'Every listing uses these unless you set its own. eBay also takes 30c an order.'),
+      el('label', { class: 'check' }, thank, 'Send one thank-you once it should have arrived'),
+      text,
+      el('p', { class: 'hint', style: 'margin:0' }, '{name} becomes their first name and {item} what they bought. No links or Discord: eBay blocks messages that send buyers off eBay.'),
+      el('div', { class: 'row' }, save, off)));
+  box.addEventListener('toggle', () => { shown.ebaySettings = box.open; });
+  return box;
+}
+
+function renderEbay() {
+  if (!ops || !ops.ebay) return null;
+  const e = ops.ebay;
+  if (!e.connected) return el('section', null, el('h2', { id: 'ebay' }, 'eBay'), ebaySetup(e));
+  const inbox = e.inbox;
+  const o = e.orders;
+  const waiting = [
+    ...inbox.messages.map(ebayMessageCard),
+    ...inbox.notices.map((n) => ebayNoticeCard(n, inbox.messagesUrl)),
+    ...o.cancelRequests.map((x) => el('div', { class: 'card bad' },
+      el('div', { class: 'name' }, 'Wants to cancel: ' + (x.name || x.buyer)),
+      el('div', { class: 'meta' }, x.what + '. Hold the parcel, then accept or decline in eBay (Seller Hub, Orders).'))),
+    ...o.noTracking.map((x) => el('div', { class: 'card bad' },
+      el('div', { class: 'name' }, 'No tracking: ' + (x.name || x.buyer)),
+      el('div', { class: 'meta' }, x.what + ' was ticked shipped with no tracking. Add it under Shipping (Tracking on ' + x.refs.join(', ') + '), so eBay counts it as posted.'))),
+  ];
+  const live = e.listings.filter((l) => l.active);
+  return el('section', null,
+    el('h2', { id: 'ebay' }, 'eBay'),
+    el('p', { class: 'meta', style: 'margin:0 0 10px' }, o.toPost
+      ? plural(o.toPost, 'eBay order') + ' to post' + (o.late ? ', ' + o.late + ' late' : o.dueToday ? ', ' + o.dueToday + ' due today' : '') + '. They are on the Shipping list, tagged eBay.'
+      : 'No eBay orders waiting to post.'),
+    el('div', { class: 'stack' },
+      ebayAccountCard(e),
+      waiting.length ? el('div', { class: 'stack', style: 'gap:10px' }, el('h3', { style: 'margin:0' }, 'Waiting on you'), waiting) : null,
+      e.restock.length ? el('div', { class: 'card todo' }, el('div', { class: 'name' }, 'To order for the eBay shelf'),
+        el('div', { class: 'list', style: 'margin-top:6px' }, e.restock.map((r) => el('div', { class: 'meta' }, r.need + ' x ' + r.product + ' (' + r.onHand + ' of ' + r.target + ' on the shelf)')))) : null,
+      el('div', null, el('h3', null, 'Listings'), live.length
+        ? el('div', { class: 'list' }, live.map(ebayListingCard))
+        : el('p', { class: 'empty' }, 'No live listings found. Make one in Seller Hub, then press Sync now.')),
+      el('div', null, el('h3', null, 'Orders'), ebayOrdersCard(o)),
+      inbox.feedback.length ? el('div', null, el('h3', null, 'Feedback'), ebayFeedbackCard(inbox)) : null,
+      ebaySettingsCard(e)),
+    el('p', { class: 'note' }, "The listing shows what's on the shelf: a sale takes one off, Add puts arrived stock back up. The price is your cost plus your margin plus postage, after eBay's cut. Change stock and price here, not in Seller Hub, so the two never disagree."));
 }
 
 // ---------------------------------------------------------------- stock and health
@@ -936,6 +1247,7 @@ function renderBreakdown() {
         line('Sales (' + plural(d.orders, 'order') + ', ' + plural(d.units, 'unit') + ')', d.sales),
         line('Stock cost', -d.stock),
         line('Postage (Label Pro)', -d.postage),
+        d.fees ? line('eBay fees', -d.fees) : null,
         line('Profit' + (d.margin != null ? ' · ' + (d.margin * 100).toFixed(1) + '%' : ''), d.profit, 'total'),
         d.expenses ? line('Other expenses', -d.expenses) : null,
         d.expenses ? line('Profit after expenses', d.net, 'total') : null,
@@ -1145,7 +1457,7 @@ function renderCosts() {
 function render() {
   $('period').value = period;
   $('updated').textContent = 'Updated ' + new Date(stats.generatedAt).toLocaleTimeString('en-AU', { timeZone: 'Australia/Melbourne', hour: 'numeric', minute: '2-digit' });
-  $('app').replaceChildren(...[renderAlerts(), renderKey(), renderShipping(), renderStock(), renderHealth(), renderTrend(), renderBuyers(), renderProducts(), renderNights(), renderSpeed(), renderCustomers(), renderServer(), renderMoney(), renderCosts()].filter(Boolean));
+  $('app').replaceChildren(...[renderAlerts(), renderKey(), renderShipping(), renderEbay(), renderStock(), renderHealth(), renderTrend(), renderBuyers(), renderProducts(), renderNights(), renderSpeed(), renderCustomers(), renderServer(), renderMoney(), renderCosts()].filter(Boolean));
   updateShipBar();
 }
 
@@ -1159,7 +1471,7 @@ const PERIOD_OPTIONS = [
 ];
 
 const JUMPS = [
-  ['now', 'Needs you'], ['overview', 'Numbers'], ['shipping', 'Shipping'], ['stock', 'Stock'], ['health', 'Health'], ['trend', 'Trend'], ['buyers', 'Buyers'], ['products', 'Products'],
+  ['now', 'Needs you'], ['overview', 'Numbers'], ['shipping', 'Shipping'], ['ebay', 'eBay'], ['stock', 'Stock'], ['health', 'Health'], ['trend', 'Trend'], ['buyers', 'Buyers'], ['products', 'Products'],
   ['nights', 'Sale nights'], ['speed', 'Speed'], ['customers', 'Channels'], ['server', 'Server'], ['money', 'Money'], ['costs', 'Costs'],
 ];
 
@@ -1193,7 +1505,8 @@ export function renderDashboardPage() {
 
 const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-export function renderMessagePage(message) {
+export function renderMessagePage(message, link = null) {
+  const back = link ? `<p style="margin:14px 0 0"><a href="${escapeHtml(link.href)}">${escapeHtml(link.text)}</a></p>` : '';
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -1204,7 +1517,7 @@ export function renderMessagePage(message) {
 <style>${STYLE}</style>
 </head>
 <body>
-<main style="padding-top:18px"><div class="card"><h1>Dashboard</h1><p class="sub">${escapeHtml(message)}</p></div></main>
+<main style="padding-top:18px"><div class="card"><h1>Dashboard</h1><p class="sub">${escapeHtml(message)}</p>${back}</div></main>
 </body>
 </html>`;
 }

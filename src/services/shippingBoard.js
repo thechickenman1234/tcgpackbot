@@ -34,7 +34,8 @@ export function shippingBoard({ now = new Date() } = {}) {
   const db = getDb();
   const rows = db.prepare(`
     SELECT o.id, o.reference_code, o.product_id, o.product_name, o.quantity, o.shipping_method,
-      o.paid_at, o.claimed_at, o.label_batch_id, pr.display_name,
+      o.paid_at, o.claimed_at, o.label_batch_id, o.source, pr.display_name,
+      (SELECT e.ship_by FROM ebay_orders e WHERE e.order_id = o.ebay_order_id) AS ship_by,
       b.name AS buyer_name, b.shipping_address, b.city, b.state, b.zip,
       lb.created_at AS printed_at,
       (SELECT COALESCE(SUM(p.quantity), 0) FROM order_parcels p WHERE p.order_id = o.id) AS units_sent
@@ -63,6 +64,9 @@ export function shippingBoard({ now = new Date() } = {}) {
       days: Math.max(0, Math.floor((now.getTime() - Date.parse(paidAt)) / DAY)),
       // An uploaded tracking code waiting for this parcel to be ticked.
       code: codes.byOrder.get(o.id) || null,
+      // Sold on eBay: its tracking goes to eBay, and eBay wants it posted by shipBy.
+      ebay: o.source === 'ebay',
+      shipBy: o.ship_by || null,
     };
   };
 

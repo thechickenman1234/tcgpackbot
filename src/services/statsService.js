@@ -90,7 +90,7 @@ function loadOrders() {
       shippedAt: ms(o.shipped_at),
       deadlineAt: ms(o.payment_deadline_at),
       costed,
-      profit: costed ? o.total_cents - o.cost_each * o.quantity - labelCostFor(o) : null,
+      profit: costed ? o.total_cents - o.cost_each * o.quantity - labelCostFor(o) - (o.fee_cents || 0) : null,
       language: languageOf(o),
     };
   });

@@ -32,6 +32,7 @@ import { startWiseSyncJob } from './services/wiseService.js';
 import { startReelReminderJob } from './handlers/reelLoop.js';
 import { reportBuyerRoleStatus } from './services/buyerRoleService.js';
 import { startOpsServer } from './ops/opsServer.js';
+import { startEbayJob } from './jobs/ebaySync.js';
 
 initDatabase();
 
@@ -79,6 +80,7 @@ client.once('ready', async () => {
   }
   startMemberSnapshotJob(client);
   startWiseSyncJob();
+  startEbayJob(client);
   startOpsServer(client);
   await reportBuyerRoleStatus(client);
 });
