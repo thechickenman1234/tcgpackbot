@@ -102,7 +102,10 @@ export function quoteLinkMessage(order) {
 
 export const PRICE_LIST_URL = 'https://tcgpackbot.com/wholesale-pricing';
 
-/** What to send anyone asking about wholesale: how to order, and the link. */
+/**
+ * What to send anyone asking about wholesale: how to order, the link, and
+ * where to message Lachie (he answers messages faster than the Outlook inbox).
+ */
 export function instructionsMessage(name = null) {
   return [
     `Hi${name ? ` ${String(name).trim().split(/\s+/)[0]}` : ''}! Thanks for reaching out. Here's how to order wholesale:`,
@@ -110,6 +113,7 @@ export function instructionsMessage(name = null) {
     '2. Add the boxes you want (minimum 5 per country). Price per box drops at 10 and 20 boxes.',
     '3. Tap Send order and leave your details.',
     '4. We\'ll come back with shipping and your total, usually the same day. Pay by PayID and we order it straight in.',
+    'Questions? Message me on WhatsApp +61 423 596 688, on Instagram @tcgpackbot, or add me on Discord (lachiedscord) and DM me.',
     'Cheers, Lachie, TCG Pack Bot',
   ].join('\n');
 }

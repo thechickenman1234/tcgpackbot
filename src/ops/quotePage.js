@@ -101,7 +101,7 @@ export function renderQuotePage(order) {
 <div class="status ${state}"><b>${headline}</b>${detail}</div>
 <div class="card">${blocks}<div class="totals">${totals}</div></div>
 ${pay}
-<p class="help">Questions? Message us on Instagram <a href="https://instagram.com/tcgpackbot">@tcgpackbot</a>, email <a href="mailto:lachie@tcgpackbot.com">lachie@tcgpackbot.com</a> or call <a href="tel:+61423596688">0423 596 688</a>, and quote ${code}.</p>
+<p class="help">Questions? Quote ${code} and message us on WhatsApp <a href="https://wa.me/61423596688">+61 423 596 688</a>, Instagram <a href="https://instagram.com/tcgpackbot">@tcgpackbot</a> or Discord (add <b>lachiedscord</b> and send a DM).</p>
 </main>
 <script>
 document.querySelectorAll('button.copy').forEach(function (b) {
