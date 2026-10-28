@@ -223,7 +223,7 @@ Then:
 
 **The order page**, tcgpackbot.com/q/<token> (Netlify passes `/q/*` through to the bot; `QUOTE_BASE_URL`): the shop's boxes, and once the quote is sent, the shipping, total, PayID and reference with copy buttons. Before that it says the shipping is being quoted, so an unchecked figure is never seen. Then paid, or cancelled.
 
-**Website forms** (contact, wholesale enquiry, host a machine) reach Discord through the site's Netlify function, signed with `FORMS_SECRET` (the same value on Netlify and Railway), at `/public/form`. A wholesale enquiry goes to the wholesale channel with the how-to-order reply ready to paste; the others go to the staff log. The enquiry page's thank-you shows the same steps with the price list button.
+**Website forms** (contact, wholesale enquiry, host a machine) reach Discord through the site's Netlify function, signed with `FORMS_SECRET` (the same value on Netlify and Railway), at `/public/form`. A wholesale enquiry goes to the wholesale channel with a short personal follow-up ready to paste (their first name, the price list link, and Lachie's WhatsApp, Instagram and Discord); the others go to the staff log. The enquiry page's thank-you already shows them the order steps with the price list button.
 
 `/wholesale howto [name]` gives the how-to-order message with the price list link, to paste anywhere. `/wholesale list` shows the open orders. Claude can do the same through `GET /ops/wholesale` and `POST /ops/wholesale`. `GET /ops/zernio` checks `ZERNIO_API_KEY` by reading the @tcgpackbot inbox (it sends nothing) and says until when the bot can message the supplier.
 

@@ -16,7 +16,7 @@ import { ZONE } from '../services/scheduleService.js';
 import { loadPrices, matchTyped, MIN_BOXES, parseCartText, REGION_NAMES } from '../services/wholesalePrices.js';
 import { findConversation, sendDm, zernioReady } from '../services/zernioService.js';
 import {
-  cancelWholesaleOrder, createWholesaleOrder, findRecentDuplicate, getWholesaleOrder, instructionsMessage, isComplete,
+  cancelWholesaleOrder, createWholesaleOrder, findRecentDuplicate, followUpMessage, getWholesaleOrder, instructionsMessage, isComplete,
   markAsked, markQuoted, markSupplierOrdered, markWholesalePaid, noteError, openWholesaleOrders, orderCode,
   quoteLinkMessage, quoteText, quoteUrl, recordSupplierReply, setCardLocation, setLines, setShipping, summarise,
   supplierAskText, supplierOrderText,
@@ -439,8 +439,9 @@ const WHOLESALE_TYPES = { shop: 'Shop restock', streamer: 'Streamer / content', 
 
 /**
  * A website form (passed on by the site's Netlify function), as a staff
- * alert. A wholesale enquiry comes with the how-to-order reply ready to
- * paste, since the price page's Send order is the quickest way to an order.
+ * alert. A wholesale enquiry comes with a short follow-up ready to paste:
+ * their thank-you screen already showed the steps, so it's the price list
+ * link and where to message Lachie.
  */
 export async function postFormAlert(client, { form, data = {} }) {
   const kind = FORM_TITLES[form] ? form : 'contact';
@@ -455,7 +456,7 @@ export async function postFormAlert(client, { form, data = {} }) {
   const embeds = [new EmbedBuilder().setTitle(`${FORM_TITLES[kind]}: ${name}`.slice(0, 256)).setColor(0xf5a623).addFields(fields).setTimestamp()];
   if (kind === 'wholesale') {
     embeds.push(new EmbedBuilder().setTitle('Reply ready to paste (text or email)').setColor(0x95a5a6)
-      .setDescription(`\`\`\`\n${instructionsMessage(name)}\n\`\`\``));
+      .setDescription(`\`\`\`\n${followUpMessage(value('name'))}\n\`\`\``));
   }
   const channel = kind === 'wholesale' ? await cardChannel(client) : await client.channels.fetch(config.staffLogChannelId);
   const ping = config.staffRoleId ? `<@&${config.staffRoleId}> ` : '';

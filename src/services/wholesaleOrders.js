@@ -102,19 +102,36 @@ export function quoteLinkMessage(order) {
 
 export const PRICE_LIST_URL = 'https://tcgpackbot.com/wholesale-pricing';
 
+const firstName = (name) => (name ? String(name).trim().split(/\s+/)[0] : '');
+
 /**
  * What to send anyone asking about wholesale: how to order, the link, and
  * where to message Lachie (he answers messages faster than the Outlook inbox).
  */
 export function instructionsMessage(name = null) {
+  const first = firstName(name);
   return [
-    `Hi${name ? ` ${String(name).trim().split(/\s+/)[0]}` : ''}! Thanks for reaching out. Here's how to order wholesale:`,
+    `Hi${first ? ` ${first}` : ''}! Thanks for reaching out. Here's how to order wholesale:`,
     `1. Open our live price list: ${PRICE_LIST_URL}`,
     '2. Add the boxes you want (minimum 5 per country). Price per box drops at 10 and 20 boxes.',
     '3. Tap Send order and leave your details.',
     '4. We\'ll come back with shipping and your total, usually the same day. Pay by PayID and we order it straight in.',
     'Questions? Message me on WhatsApp +61 423 596 688, on Instagram @tcgpackbot, or add me on Discord (lachiedscord) and DM me.',
     'Cheers, Lachie, TCG Pack Bot',
+  ].join('\n');
+}
+
+/**
+ * The follow-up for a website enquiry. Their thank-you screen already showed
+ * the steps, so this is a short personal note from Lachie with the link.
+ */
+export function followUpMessage(name = null) {
+  const first = firstName(name);
+  return [
+    `Hi${first ? ` ${first}` : ''}, it's Lachie from TCG Pack Bot. Got your wholesale enquiry, thanks!`,
+    `Our live prices are here: ${PRICE_LIST_URL}`,
+    'Add what you want and tap Send order, or just tell me what you\'re after and I\'ll quote you.',
+    'You can reach me on WhatsApp +61 423 596 688, Instagram @tcgpackbot or Discord (lachiedscord).',
   ].join('\n');
 }
 
